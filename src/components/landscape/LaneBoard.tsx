@@ -39,6 +39,7 @@ export function LaneBoard({ repoId, useFixture, lanes }: Props) {
   const [error, setError] = useState<string | null>(null);
   const utils = api.useUtils();
   const stackedMut = api.git.stackedAction.useMutation();
+  const removeMut = api.worktree.remove.useMutation();
 
   async function openPr(lane: TrunkLane) {
     if (!repoId || useFixture) return;
@@ -60,6 +61,31 @@ export function LaneBoard({ repoId, useFixture, lanes }: Props) {
       }
     } catch (err) {
       setError(errText(err, "Could not open the pull request."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function finishWorker(lane: TrunkLane) {
+    if (!repoId || useFixture) return;
+    const ok = window.confirm(
+      `Remove worker “${lane.slug}” from the desk?\n\nThe folder goes away. The git branch stays (you can delete it later).`,
+    );
+    if (!ok) return;
+    setBusyId(lane.id);
+    setError(null);
+    setNote(null);
+    try {
+      await removeMut.mutateAsync({
+        repoId,
+        nodeId: lane.id,
+        mode: "keep-branch",
+      });
+      await utils.scan.trunk.invalidate({ repoId });
+      await utils.worktree.list.invalidate({ repoId });
+      setNote(`Removed “${lane.slug}” from the desk.`);
+    } catch (err) {
+      setError(errText(err, "Could not remove that worker."));
     } finally {
       setBusyId(null);
     }
@@ -171,6 +197,14 @@ export function LaneBoard({ repoId, useFixture, lanes }: Props) {
                     {busyId === lane.id ? "Opening…" : "Open pull request"}
                   </button>
                 )}
+                <button
+                  type="button"
+                  disabled={busyId === lane.id || useFixture || !repoId}
+                  onClick={() => void finishWorker(lane)}
+                  className="border border-white/10 px-2 py-1 text-[11px] text-white/40 hover:border-white/25 hover:text-white/70 disabled:opacity-35"
+                >
+                  Remove
+                </button>
               </div>
             </li>
           );
