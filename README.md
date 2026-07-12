@@ -1,40 +1,31 @@
 # blossvm-orchestra
 
-A local desk to run several Cursor workers on one project without them stepping on each other.
+Local desk for parallel Cursor workers on one (or more) git projects.
 
-**Repo:** [blossvmtn/blossvm-orchestra](https://github.com/blossvmtn/blossvm-orchestra)  
-**Rules:** `docs/ORCHESTRA-CONSTITUTION-v2.md`
+You start a worker → it gets its own folder and branch → you open that folder in Cursor → the desk shows commits → you open the pull request from the desk.
 
-## What it does
-
-1. You pick a project (or add more than one).
-2. **Start worker** makes a private folder + branch under  
-   `<repo>/.orchestra/worktrees/<name>/`
-3. You open that folder in Cursor — that chat is the worker.
-4. The desk watches git: commits show up, and you can **Open pull request** from the card.
-5. **Remove** clears the worker folder from the desk when you’re done.
-
-No cloud API keys required for the happy path. GitHub uses your local `gh` login.
-
-## Quick start
+## Run it
 
 ```bash
 npm install
-npm run dev   # http://localhost:3000
+npm run dev
 ```
 
-Then: **+ Add project** → **+ Start worker** → copy folder → work in Cursor → come back → **Open pull request**.
+Open http://localhost:3000
+
+1. Add a project (folder path or `owner/repo` if it lives under `~/dev`)
+2. Start a worker
+3. Copy the folder path and open it in Cursor
+4. When commits show on the desk, open the pull request there
 
 ```bash
 npm test
 ```
 
-## Under the hood
+## Notes
 
-- create-t3-app · TypeScript · Tailwind · tRPC (no Prisma / NextAuth)
-- Local helper: Ollama (preferred model `gemma4:31b`; spare ok)
-- Git / `gh` via `execFile` only (T3 Code MIT patterns — see `NOTICE`)
-
-## Note on naming
-
-Earlier notes called this `orchestra-ui`. That name is retired. Product + GitHub + folder = **blossvm-orchestra**.
+- Worker folders live at `<repo>/.orchestra/worktrees/<name>/`
+- Needs local `git` and `gh` (signed in)
+- Optional: Ollama for the desk chat / helper
+- Product rules: `docs/ORCHESTRA-CONSTITUTION-v2.md`
+- T3 Code MIT attribution: `NOTICE`
