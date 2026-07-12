@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), ui-serif, Georgia, serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --color-ink: #0b0f14;
+  --color-charcoal: #141a22;
+  --color-mist: #2a3540;
+  --color-fog: #8a96a3;
+  --color-petal: #f3c4d0;
+  --color-blossom: #e8a4b8;
+  --color-brass: #c4a574;
+  --color-desk: #10161e;
+  --color-rail: #d7dde5;
+
+  --color-status-active: #3b82f6;
+  --color-status-merged: #22a06b;
+  --color-status-stashed: #e07830;
+  --color-status-orphaned: #d94040;
+  --color-status-pr: #3b82f6;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--color-ink);
+  color: #e8edf2;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-petal) 45%, transparent);
+  color: var(--color-ink);
+}
+
+@keyframes petal-drift {
+  0% {
+    transform: translate3d(0, -8%, 0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate3d(12%, 110%, 0) rotate(28deg);
+    opacity: 0;
+  }
+}
+
+@keyframes rail-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes mist-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
