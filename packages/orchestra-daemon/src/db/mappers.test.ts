@@ -18,19 +18,42 @@ const TS_2 = "d290f1ee-6c54-4b01-90e6-d701748f0004";
 const AR_1 = "d290f1ee-6c54-4b01-90e6-d701748f0005";
 const RC_1 = "d290f1ee-6c54-4b01-90e6-d701748f0006";
 
+// PRAGMA foreign_keys = ON (schema.ts, CodeRabbit PR #1 review, 2026-07-18)
+// means every taskSpec/agentRun/receipt insert below now needs its parent row
+// to actually exist first — these two helpers seed exactly that.
+function seedWorkIntent(db: ReturnType<typeof freshDb>, id: string) {
+  db.insert(workIntents)
+    .values({
+      id,
+      planId: "d290f1ee-6c54-4b01-90e6-d701748f0099",
+      repoSlug: "blossvm-orchestra",
+      intent: "Fix the auth bug",
+      status: "captured",
+      createdAt: "2026-07-18T16:00:00.000Z",
+    })
+    .run();
+}
+
+function seedTaskSpec(db: ReturnType<typeof freshDb>, id: string, workIntentId: string) {
+  db.insert(taskSpecs)
+    .values({
+      id,
+      workIntentId,
+      slug: "security-sanitize",
+      branch: "orch/security-sanitize",
+      role: "Security",
+      allowedPaths: [],
+      forbiddenPaths: [],
+      acceptance: [],
+      createdAt: "2026-07-18T16:00:00.000Z",
+    })
+    .run();
+}
+
 describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
   test("rowToWorkIntent round-trips (WorkIntent has no optional fields, so this is a no-op pass-through)", () => {
     const db = freshDb();
-    db.insert(workIntents)
-      .values({
-        id: WI_1,
-        planId: "d290f1ee-6c54-4b01-90e6-d701748f0099",
-        repoSlug: "blossvm-orchestra",
-        intent: "Fix the auth bug",
-        status: "captured",
-        createdAt: "2026-07-18T16:00:00.000Z",
-      })
-      .run();
+    seedWorkIntent(db, WI_1);
 
     const raw = db.select().from(workIntents).where(eq(workIntents.id, WI_1)).get();
     if (!raw) throw new Error("row not found");
@@ -42,6 +65,7 @@ describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
 
   test("a raw row with an unset optional column fails Schema.parse directly (proves the seam is real)", () => {
     const db = freshDb();
+    seedWorkIntent(db, WI_1);
     db.insert(taskSpecs)
       .values({
         id: TS_NULL,
@@ -64,19 +88,8 @@ describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
 
   test("rowToTaskSpec converts null columns to undefined and parses cleanly", () => {
     const db = freshDb();
-    db.insert(taskSpecs)
-      .values({
-        id: TS_1,
-        workIntentId: WI_1,
-        slug: "security-sanitize",
-        branch: "orch/security-sanitize",
-        role: "Security",
-        allowedPaths: [],
-        forbiddenPaths: [],
-        acceptance: [],
-        createdAt: "2026-07-18T16:00:00.000Z",
-      })
-      .run();
+    seedWorkIntent(db, WI_1);
+    seedTaskSpec(db, TS_1, WI_1);
 
     const raw = db.select().from(taskSpecs).where(eq(taskSpecs.id, TS_1)).get();
     if (!raw) throw new Error("row not found");
@@ -89,6 +102,7 @@ describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
 
   test("rowToTaskSpec preserves a set optional field", () => {
     const db = freshDb();
+    seedWorkIntent(db, WI_1);
     db.insert(taskSpecs)
       .values({
         id: TS_2,
@@ -115,6 +129,8 @@ describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
 
   test("rowToAgentRun and rowToReceipt round-trip through the same seam", () => {
     const db = freshDb();
+    seedWorkIntent(db, WI_1);
+    seedTaskSpec(db, TS_1, WI_1);
     db.insert(agentRuns)
       .values({
         id: AR_1,

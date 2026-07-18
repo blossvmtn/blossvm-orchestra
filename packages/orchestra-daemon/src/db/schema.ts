@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, real, integer, index } from "drizzle-orm/sqlite-core";
 import {
   WorkIntentStatusSchema,
   RiskTierSchema,
@@ -25,46 +25,77 @@ export const workIntents = sqliteTable("work_intents", {
   createdAt: text("created_at").notNull(),
 });
 
-export const taskSpecs = sqliteTable("task_specs", {
-  id: text("id").primaryKey(),
-  workIntentId: text("work_intent_id").notNull(),
-  slug: text("slug").notNull(),
-  branch: text("branch").notNull(),
-  role: text("role").notNull(),
-  modelHint: text("model_hint"),
-  allowedPaths: text("allowed_paths", { mode: "json" }).$type<string[]>().notNull(),
-  forbiddenPaths: text("forbidden_paths", { mode: "json" }).$type<string[]>().notNull(),
-  acceptance: text("acceptance", { mode: "json" }).$type<string[]>().notNull(),
-  // R0-R4, unset until P1 (spec §1.5) — nullable AND enum-narrowed.
-  riskTier: text("risk_tier", { enum: RiskTierSchema.options }),
-  createdAt: text("created_at").notNull(),
-});
+// Foreign keys + indexes on every fk column (CodeRabbit, PR #1 review,
+// 2026-07-18): without them SQLite can't stop a task_spec pointing at a
+// nonexistent work_intent, and a lookup by workIntentId/taskSpecId/agentRunId
+// degrades to a full table scan as data grows. pipeline.ts's transactional
+// write makes an orphan unlikely on the fixture happy path, but doesn't
+// protect against a partial delete or a future direct-SQL bug. Enforcement
+// itself needs `PRAGMA foreign_keys = ON` at the connection level — see
+// createDb() in db.ts, since SQLite ignores `.references()` without it.
+export const taskSpecs = sqliteTable(
+  "task_specs",
+  {
+    id: text("id").primaryKey(),
+    workIntentId: text("work_intent_id")
+      .notNull()
+      .references(() => workIntents.id),
+    slug: text("slug").notNull(),
+    branch: text("branch").notNull(),
+    role: text("role").notNull(),
+    modelHint: text("model_hint"),
+    allowedPaths: text("allowed_paths", { mode: "json" }).$type<string[]>().notNull(),
+    forbiddenPaths: text("forbidden_paths", { mode: "json" }).$type<string[]>().notNull(),
+    acceptance: text("acceptance", { mode: "json" }).$type<string[]>().notNull(),
+    // R0-R4, unset until P1 (spec §1.5) — nullable AND enum-narrowed.
+    riskTier: text("risk_tier", { enum: RiskTierSchema.options }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("task_specs_work_intent_id_idx").on(table.workIntentId)],
+);
 
-export const agentRuns = sqliteTable("agent_runs", {
-  id: text("id").primaryKey(),
-  taskSpecId: text("task_spec_id").notNull(),
-  provider: text("provider", { enum: AgentRunProviderSchema.options }).notNull(),
-  claudeSessionId: text("claude_session_id"),
-  status: text("status", { enum: AgentRunStatusSchema.options }).notNull(),
-  lastHeartbeatSummary: text("last_heartbeat_summary"),
-  startedAt: text("started_at").notNull(),
-  endedAt: text("ended_at"),
-  costUsd: real("cost_usd"),
-});
+export const agentRuns = sqliteTable(
+  "agent_runs",
+  {
+    id: text("id").primaryKey(),
+    taskSpecId: text("task_spec_id")
+      .notNull()
+      .references(() => taskSpecs.id),
+    provider: text("provider", { enum: AgentRunProviderSchema.options }).notNull(),
+    claudeSessionId: text("claude_session_id"),
+    status: text("status", { enum: AgentRunStatusSchema.options }).notNull(),
+    lastHeartbeatSummary: text("last_heartbeat_summary"),
+    startedAt: text("started_at").notNull(),
+    endedAt: text("ended_at"),
+    costUsd: real("cost_usd"),
+  },
+  (table) => [index("agent_runs_task_spec_id_idx").on(table.taskSpecId)],
+);
 
-export const receipts = sqliteTable("receipts", {
-  id: text("id").primaryKey(),
-  agentRunId: text("agent_run_id").notNull(),
-  taskSpecId: text("task_spec_id").notNull(),
-  outcome: text("outcome", { enum: ReceiptOutcomeSchema.options }).notNull(),
-  summary: text("summary").notNull(),
-  prUrl: text("pr_url"),
-  prTitle: text("pr_title"),
-  filesTouched: text("files_touched", { mode: "json" }).$type<string[]>(),
-  verification: text("verification", { enum: VerificationSchema.options }).notNull(), // D11
-  costUsd: real("cost_usd"),
-  createdAt: text("created_at").notNull(),
-});
+export const receipts = sqliteTable(
+  "receipts",
+  {
+    id: text("id").primaryKey(),
+    agentRunId: text("agent_run_id")
+      .notNull()
+      .references(() => agentRuns.id),
+    taskSpecId: text("task_spec_id")
+      .notNull()
+      .references(() => taskSpecs.id),
+    outcome: text("outcome", { enum: ReceiptOutcomeSchema.options }).notNull(),
+    summary: text("summary").notNull(),
+    prUrl: text("pr_url"),
+    prTitle: text("pr_title"),
+    filesTouched: text("files_touched", { mode: "json" }).$type<string[]>(),
+    verification: text("verification", { enum: VerificationSchema.options }).notNull(), // D11
+    costUsd: real("cost_usd"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("receipts_agent_run_id_idx").on(table.agentRunId),
+    index("receipts_task_spec_id_idx").on(table.taskSpecId),
+  ],
+);
 
 // entity_type / event_type have no Zod counterpart in @orchestra/core (they're
 // a schema.ts-only bookkeeping concept, not a domain contract) — narrowed with
