@@ -55,4 +55,27 @@ async function main(): Promise<void> {
   writeDecision(pathAllowed(filePath, worktreeRoot, allowedPaths, forbiddenPaths), filePath);
 }
 
-main();
+/**
+ * PR #2 review, 2026-07-18 — BLOCKING, fixed same-day, before merge: `main()`
+ * was invoked bare with no try/catch. A malformed ORCHESTRA_ALLOWED_PATHS/
+ * ORCHESTRA_FORBIDDEN_PATHS env var (or malformed stdin) crashed this
+ * process with an uncaught JSON.parse error — verified empirically. Per
+ * Claude Code's documented hook exit-code contract, only exit code 2 is a
+ * blocking error for PreToolUse; any other non-zero exit (an uncaught throw
+ * exits 1) is non-blocking, so the gated tool call would have proceeded —
+ * the fence failing open on its own internal error, the opposite of what a
+ * security boundary needs. Any error here now writes an explicit `deny`
+ * instead, so a broken hook blocks edits rather than silently allowing them.
+ */
+main().catch((err: unknown) => {
+  const reason = err instanceof Error ? err.message : String(err);
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: `Fence hook failed closed on an internal error: ${reason}`,
+      },
+    }),
+  );
+});

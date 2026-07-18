@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import type { OrchestraDb } from "./db/db";
 import {
   dispatchFixtureWorkIntent,
@@ -138,7 +139,18 @@ async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
       if (err instanceof RepoNotRegisteredError) {
         return Response.json({ error: err.message }, { status: 404 });
       }
-      return Response.json({ error: err instanceof Error ? err.message : "dispatch failed" }, { status: 500 });
+      // PR #2 review, 2026-07-18 — should-fix: a Zod validation failure on
+      // taskSpec (e.g. a malformed field) is a client input error, not a
+      // server fault — it was falling through to the generic 500 branch.
+      if (err instanceof ZodError) {
+        return Response.json({ error: "invalid taskSpec", issues: err.issues }, { status: 400 });
+      }
+      // Nit from the same review: don't echo internal error detail (git
+      // stderr, absolute filesystem paths) to the caller on a genuine server
+      // fault — log it server-side, return a generic message.
+      // eslint-disable-next-line no-console
+      console.error("orchestra-daemon: /work-intents dispatch failed —", err);
+      return Response.json({ error: "dispatch failed" }, { status: 500 });
     }
   }
 

@@ -249,4 +249,40 @@ describe("POST /repos and POST /work-intents (Phase 1)", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // PR #2 review, 2026-07-18 — should-fix: a Zod validation failure on a
+  // *registered* repo's taskSpec used to fall through to a generic 500. This
+  // registers a real repo first (so the request gets past the 404 check)
+  // then sends a taskSpec Zod actually rejects (missing required fields).
+  test("POST /work-intents returns 400 (not 500) when taskSpec fails Zod validation", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-server-zod-test-"));
+    try {
+      await git(repoRoot, ["init", "-b", "main"]);
+      const registerRes = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: repoRoot }),
+      });
+      const repo = (await registerRes.json()) as { slug: string };
+
+      const res = await fetch(`${baseUrl}/work-intents`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          repoSlug: repo.slug,
+          intent: "test",
+          taskSpec: { slug: "lane-1" /* missing branch, role, allowedPaths, etc. */ },
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("invalid taskSpec");
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
 });

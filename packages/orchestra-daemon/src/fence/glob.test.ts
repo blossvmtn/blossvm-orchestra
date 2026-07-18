@@ -43,4 +43,39 @@ describe("pathAllowed", () => {
     expect(pathAllowed(allowed, WORKTREE_ROOT, allowedPaths, forbiddenPaths)).toBe(true);
     expect(pathAllowed(forbidden, WORKTREE_ROOT, allowedPaths, forbiddenPaths)).toBe(false);
   });
+
+  // PR #2 review, 2026-07-18 — BLOCKING, confirmed by two independent
+  // reviewers: a path entirely outside worktreeRoot was allowed whenever a
+  // glob pattern happened to match its "../"-prefixed relative form —
+  // `allowedPaths: ["**"]` (a completely natural "whole worktree" config)
+  // or an empty allowedPaths ("no restriction") both defeated the fence for
+  // literally any absolute path on disk. These assert the fix: escaping the
+  // tree is denied outright, before any glob logic runs, regardless of what
+  // allowedPaths/forbiddenPaths say.
+  describe("containment — a path outside worktreeRoot is always denied", () => {
+    test("denies an unrelated absolute path even with a maximally permissive allowedPaths", () => {
+      expect(pathAllowed("/etc/passwd", WORKTREE_ROOT, ["**"], [])).toBe(false);
+    });
+
+    test("denies an unrelated absolute path with an empty allowedPaths (no allowlist restriction)", () => {
+      expect(pathAllowed("/etc/hosts", WORKTREE_ROOT, [], ["src/components/**"])).toBe(false);
+    });
+
+    test("denies a sibling worktree whose name merely shares WORKTREE_ROOT as a text prefix", () => {
+      // .../worktrees/security-sanitize-evil is NOT inside
+      // .../worktrees/security-sanitize, even though the string contains it.
+      const siblingWorktree = `${WORKTREE_ROOT}-evil/secret.ts`;
+      expect(pathAllowed(siblingWorktree, WORKTREE_ROOT, ["**"], [])).toBe(false);
+    });
+
+    test("denies an explicit '../' traversal even when it would otherwise glob-match", () => {
+      const traversal = `${WORKTREE_ROOT}/../../../etc/passwd`;
+      expect(pathAllowed(traversal, WORKTREE_ROOT, ["**"], [])).toBe(false);
+    });
+
+    test("still allows a real path inside the tree under a permissive allowedPaths", () => {
+      // The fix must not be so aggressive it breaks the legitimate "**" case.
+      expect(pathAllowed(`${WORKTREE_ROOT}/src/anything.ts`, WORKTREE_ROOT, ["**"], [])).toBe(true);
+    });
+  });
 });

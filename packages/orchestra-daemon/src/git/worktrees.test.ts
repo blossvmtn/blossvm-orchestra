@@ -33,8 +33,12 @@ function freshDb() {
 // so these tests can exercise a real taskSpecId, not just a random UUID.
 function seedTaskSpec(db: OrchestraDb): string {
   const now = "2026-07-18T16:00:00.000Z";
+  // onConflictDoNothing: calling this twice on the same db (e.g. to create
+  // two TaskSpecs sharing one repo) must not violate repos.slug's unique
+  // index.
   db.insert(repos)
     .values({ id: randomUUID(), slug: "test-repo", rootPath: "/tmp/test-repo", registeredAt: now })
+    .onConflictDoNothing()
     .run();
   const workIntentId = randomUUID();
   db.insert(workIntents)
@@ -109,6 +113,39 @@ describe("createWorktree", () => {
 
     expect(second.id).toBe(first.id);
     expect(second.status).toBe("active");
+  });
+
+  test("a repair preserves the original anchorSha — does not silently drift the creation-time SHA (PR #2 review)", async () => {
+    const db = freshDb();
+    const taskSpecId = seedTaskSpec(db);
+
+    const first = await createWorktree(db, { repoRoot, taskSpecId, slug: "lane-anchor", branch: "orch/lane-anchor" });
+
+    // Advance main so a naive repair would compute a different anchorSha.
+    await Bun.write(path.join(repoRoot, "new-file.txt"), "content\n");
+    await git(repoRoot, ["add", "new-file.txt"]);
+    await git(repoRoot, ["commit", "-m", "advance main"]);
+
+    const repaired = await createWorktree(db, {
+      repoRoot,
+      taskSpecId,
+      slug: "lane-anchor",
+      branch: "orch/lane-anchor",
+    });
+
+    expect(repaired.anchorSha).toBe(first.anchorSha);
+  });
+
+  test("refuses to alias two different TaskSpecs onto the same worktree path (PR #2 review)", async () => {
+    const db = freshDb();
+    const taskSpecA = seedTaskSpec(db);
+    const taskSpecB = seedTaskSpec(db);
+
+    await createWorktree(db, { repoRoot, taskSpecId: taskSpecA, slug: "shared-slug", branch: "orch/a" });
+
+    await expect(
+      createWorktree(db, { repoRoot, taskSpecId: taskSpecB, slug: "shared-slug", branch: "orch/b" }),
+    ).rejects.toThrow(/already belongs to a different TaskSpec/);
   });
 
   test("falls back to attaching an existing branch when 'worktree add -b' fails", async () => {

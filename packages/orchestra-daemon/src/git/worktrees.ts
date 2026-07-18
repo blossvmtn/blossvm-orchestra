@@ -96,13 +96,31 @@ function upsertWorktreeRow(
     .get();
 
   if (existingRow) {
+    // PR #2 review, 2026-07-18 — should-fix: anchorSha is "the base branch
+    // SHA at creation" (D20) — a repair (this row already exists) must not
+    // overwrite it with whatever the base branch tip resolves to *today*,
+    // or every daemon-restart-triggered repair silently drifts the recorded
+    // creation point forward. Only branch/path/status/lastSyncAt update here.
     db.update(worktreesTable)
-      .set({ branch: opts.branch, path: opts.path, anchorSha: opts.anchorSha, status: "active", lastSyncAt: now })
+      .set({ branch: opts.branch, path: opts.path, status: "active", lastSyncAt: now })
       .where(eq(worktreesTable.id, existingRow.id))
       .run();
-    const updated = rowToWorktree({ ...existingRow, branch: opts.branch, path: opts.path, anchorSha: opts.anchorSha, status: "active", lastSyncAt: now });
+    const updated = rowToWorktree({ ...existingRow, branch: opts.branch, path: opts.path, status: "active", lastSyncAt: now });
     writeEvent(db, "worktree", updated.id, "updated", updated);
     return updated;
+  }
+
+  // PR #2 review, 2026-07-18 — should-fix: this table is 1:1 with TaskSpec
+  // (D20), but the on-disk collision check above keys on filesystem path,
+  // not taskSpecId. Without this guard, two different TaskSpecs computing
+  // the same worktreePath (a shared slug) would silently alias to one
+  // physical directory under two separate Worktree rows — undermining the
+  // phase's whole point ("physical, isolated worker lanes"). Refuse instead.
+  const pathCollision = db.select().from(worktreesTable).where(eq(worktreesTable.path, opts.path)).get();
+  if (pathCollision && pathCollision.taskSpecId !== opts.taskSpecId) {
+    throw new Error(
+      `Worktree path ${opts.path} already belongs to a different TaskSpec (${pathCollision.taskSpecId}) — refusing to alias.`,
+    );
   }
 
   const worktree: Worktree = {
@@ -247,6 +265,10 @@ export async function removeWorktree(
   }
 
   db.delete(worktreesTable).where(eq(worktreesTable.id, worktreeId)).run();
-  writeEvent(db, "worktree", worktreeId, "updated", { id: worktreeId, removed: true, mode });
+  // PR #2 review, 2026-07-18 — should-fix: D17 says an event's payload is
+  // "the already-Schema.parse()-validated domain object itself" — a
+  // synthetic {id, removed, mode} object isn't that. Use the real row (read
+  // before delete) instead, same shape every other worktree event uses.
+  writeEvent(db, "worktree", worktreeId, "updated", rowToWorktree(row));
   return { ok: true };
 }
