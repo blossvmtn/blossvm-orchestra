@@ -243,9 +243,11 @@ Verification commands re-confirmed clean at the end of this session (same as Ses
 list, now with more tests): `bun run test` (core 19/19, daemon 22/22 — was 4/4 at Step 4);
 `bunx tsc --noEmit` clean in all four packages/apps (`orchestra-core`, `orchestra-daemon`,
 `orchestra-cli`, `orchestra-cockpit`); `bunx drizzle-kit check` from `packages/orchestra-daemon`
-clean (no drift — Steps 5-7 touched no migrations). Rust/Tauri build itself was not
-re-verified this session (no Rust files changed since Step 2); still needs the real-Mac
-click-through above regardless.
+clean (no drift — Steps 5-7 touched no migrations). This paragraph originally said Rust
+wasn't re-verified this session — stale as soon as the F4 fix (below) touched `lib.rs`;
+corrected (CodeRabbit, PR #1 review, 2026-07-18): Rust/Tauri **was** compile-verified with
+`cargo check` and exercised through the real macOS Tauri/WKWebView click-through described
+in "Real-Mac verification" above.
 
 Bun was not installed on this machine at the start of this session (installed via
 `brew install oven-sh/bun/bun`, then `bun install` at repo root) — worth noting since Session
