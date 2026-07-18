@@ -91,12 +91,50 @@ describe("the IPC path (spec §3.6): real authenticated fetch() over a real loop
       headers: { origin: "http://localhost:1420" },
     });
     expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("http://localhost:1420");
     expect(preflight.headers.get("access-control-allow-headers")).toContain("authorization");
 
     const real = await fetch(`${baseUrl}/ping`, {
-      headers: { authorization: "Bearer test-token" },
+      headers: { authorization: "Bearer test-token", origin: "http://localhost:1420" },
     });
-    expect(real.headers.get("access-control-allow-origin")).toBe("*");
+    expect(real.headers.get("access-control-allow-origin")).toBe("http://localhost:1420");
+  });
+
+  test("CORS is scoped to the cockpit's known origins, not a wildcard — an unrelated origin gets no allow-origin header", async () => {
+    // Security review, 2026-07-18: a wildcard ACAO would let the browser
+    // deliver a preflighted, authorization-bearing request from ANY web
+    // origin — a malicious page open in the user's regular browser, nothing
+    // to do with this app. Only the two real cockpit origins should ever see
+    // this header set.
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const preflight = await fetch(`${baseUrl}/fixture/dispatch`, {
+      method: "OPTIONS",
+      headers: { origin: "https://evil.example.com" },
+    });
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
+
+    const real = await fetch(`${baseUrl}/ping`, {
+      headers: { authorization: "Bearer test-token", origin: "https://evil.example.com" },
+    });
+    expect(real.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("an empty deps.token can never itself be a valid credential — defense in depth against the startup-race bypass", async () => {
+    // Security review, 2026-07-18: daemon.ts previously started Bun.serve()
+    // with deps.token === "" while the async token write was still in
+    // flight; `authorization: "Bearer "` (empty) matched it. daemon.ts now
+    // generates the token synchronously before binding, so this window no
+    // longer exists in practice — this test guards the second, independent
+    // layer: routeRequest must reject an empty token outright, not just rely
+    // on equality, so the bug class can't resurface from a future refactor.
+    const deps: DaemonDeps = { token: "", db: createDb(":memory:") };
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: createFetchHandler(deps) });
+    activeServer = server;
+    const baseUrl = `http://127.0.0.1:${server.port}`;
+
+    const res = await fetch(`${baseUrl}/ping`, { headers: { authorization: "Bearer " } });
+    expect(res.status).toBe(401);
   });
 });

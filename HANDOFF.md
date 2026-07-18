@@ -214,10 +214,16 @@ only, no code).
   `OPTIONS` handler + CORS headers on every response; this completes the already-locked
   "plain fetch(), no Tauri relay" decision (spec §3 step 2), it doesn't reopen it. `App.tsx`
   grew a "Dispatch fixture work intent" button + Receipt render for the manual click-through.
-- **Step 7 — D8/D9/D11 recorded, plus F4 given an explicit disposition.** See the
-  "Amendment 2026-07-18" section appended to `docs/adr/0001-tauri-bun-architecture.md`. F4
-  (Step 4's Fable finding on Tauri daemon-supervision cleanup) is explicitly deferred to P1
-  there, not silently carried forward again.
+- **Step 7 — D8/D9 recorded (implementation deferred to P1), D11 recorded (moot for P0).**
+  See the "Amendment 2026-07-18" section appended to `docs/adr/0001-tauri-bun-architecture.md`.
+- **F4 (Step 4's Fable finding on Tauri daemon-supervision cleanup) — resolved, not
+  deferred.** Reconsidered same-day, after PR0's own review pass, from "decided-deferred to
+  P1" to "resolve now": D1 already scopes Rust to supervising the one daemon child it spawns,
+  so this completes D1's own scope rather than adding P1 scope. `lib.rs` now has a
+  `RunEvent::ExitRequested` net alongside `WindowEvent::Destroyed`, and `.wait()` after
+  `.kill()`. Cross-launch orphan-detection (a prior crash's daemon still holding the port on
+  next launch) is still genuinely open, named in the ADR, not attempted. Compile-verified
+  with `cargo check` on this session's real macOS Apple Silicon target.
 
 **Real-Mac verification — done, 2026-07-18, same day.** `bun run cockpit:dev` needed two
 one-time machine setup steps neither Session 1 nor Session 2 had hit before (this Mac had
@@ -245,3 +251,38 @@ Bun was not installed on this machine at the start of this session (installed vi
 `brew install oven-sh/bun/bun`, then `bun install` at repo root) — worth noting since Session
 1's container had it preinstalled and this one didn't; a fresh session/container should
 expect to do this step if `bun --version` fails.
+
+## Session 3 — PR0 polish + independent code/security review (2026-07-18, same day, after PR #1 opened)
+
+Once PR #1 was open (`blossvmtn/blossvm-orchestra#1`), JD asked what else could fold into
+PR0 before P1. Three items landed as their own commits — `.github/workflows/ci.yml` (wires
+the exact verification commands used all session into every push/PR), a full `README.md`
+rewrite (the old one described the pre-restructure single-app v0 and would have stranded a
+new contributor at the first command), and the F4 fix described above. CodeRabbit was
+rate-limited on the PR (posted a hollow "Review limit reached" pass) and Qodo was paused for
+this account, so JD asked for an independent code review and security review instead of
+triggering CodeRabbit.
+
+Five parallel Sonnet review agents ran against the PR diff (merge-base `3a2cb1f1` → HEAD):
+spec/ADR adherence, a shallow bug scan, a git-history-informed review, a code-comment
+compliance check, and a dedicated security scan. Four came back clean (schemas, IPC
+transport, F1/F2/F3/F5/F7 fixes, and the `lib.rs` F4 fix all verified against the actual
+code, not just commit messages) with only minor doc-citation nits (one stray "ADR 0001 D13"
+in the old README, one stray "ADR 0001/0002" in a `receipt.ts` comment — D2 doesn't exist).
+
+**The security scan found one real, high-severity bug**, since fixed: `daemon.ts` started
+`Bun.serve()` with `deps.token` still `""` while `generateAndWriteToken()`'s disk I/O was in
+flight — during that window, a request with `authorization: "Bearer "` (empty) matched the
+empty in-memory token and was treated as authenticated. This existed since Step 4 but the
+same-session CORS fix (Step 6) made it reachable from *any* web origin, not just local
+processes, by allowing the browser to deliver a preflighted, `authorization`-bearing request
+cross-origin. Fixed three ways: `token.ts` split into `generateToken()` (sync) +
+`writeToken()` (async), so `daemon.ts` populates the real token before `Bun.serve()` binds,
+not after; `server.ts`'s auth check now rejects an empty `deps.token` outright as
+defense-in-depth; and CORS is scoped to the two real cockpit origins
+(`http://localhost:1420`, `tauri://localhost`) instead of `*`. Three new regression tests in
+`server.test.ts` guard all three. `bun run test` at 24/24 daemon (was 22), `bunx tsc --noEmit`
+clean in all four packages/apps, `bunx drizzle-kit check` clean.
+
+Not yet done as of this note: committing this fix, pushing, and confirming CI + a fresh
+CodeRabbit pass (or another independent review) on the updated PR.
