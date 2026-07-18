@@ -100,6 +100,21 @@ describe("the IPC path (spec §3.6): real authenticated fetch() over a real loop
     expect(real.headers.get("access-control-allow-origin")).toBe("http://localhost:1420");
   });
 
+  test("the Windows production webview origin (http://tauri.localhost) is also allowed", async () => {
+    // Tauri v2 uses tauri://localhost on macOS/Linux but http://tauri.localhost
+    // on Windows (CodeRabbit, PR #1 review, 2026-07-18) — not yet a real target
+    // platform for this build (JD is on Apple Silicon macOS, ADR 0001 D2), but
+    // cheap to cover now rather than rediscover when Windows support lands.
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const preflight = await fetch(`${baseUrl}/ping`, {
+      method: "OPTIONS",
+      headers: { origin: "http://tauri.localhost" },
+    });
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("http://tauri.localhost");
+  });
+
   test("CORS is scoped to the cockpit's known origins, not a wildcard — an unrelated origin gets no allow-origin header", async () => {
     // Security review, 2026-07-18: a wildcard ACAO would let the browser
     // deliver a preflighted, authorization-bearing request from ANY web

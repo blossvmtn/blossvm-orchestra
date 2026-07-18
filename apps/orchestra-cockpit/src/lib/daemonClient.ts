@@ -20,14 +20,30 @@ async function getToken(): Promise<string> {
   return cachedToken;
 }
 
-export async function pingDaemon(): Promise<{ ok: boolean; pong: boolean; at: string }> {
+const DAEMON_TIMEOUT_MS = 10_000;
+
+/**
+ * A daemon process that accepts the TCP connection but never responds (hung,
+ * deadlocked, wedged on a bad write) would otherwise leave every caller of
+ * this module awaiting indefinitely — the cockpit stuck on "checking…" or
+ * "Dispatching…" forever with no way out (CodeRabbit, PR #1 review,
+ * 2026-07-18). Every daemon call goes through this one bounded fetch.
+ */
+async function daemonFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = await getToken();
-  const res = await fetch(`${DAEMON_BASE_URL}/ping`, {
-    headers: { authorization: `Bearer ${token}` },
+  const res = await fetch(`${DAEMON_BASE_URL}${path}`, {
+    ...init,
+    headers: { ...init?.headers, authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(DAEMON_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`daemon responded ${res.status}`);
   }
+  return res;
+}
+
+export async function pingDaemon(): Promise<{ ok: boolean; pong: boolean; at: string }> {
+  const res = await daemonFetch("/ping");
   return (await res.json()) as { ok: boolean; pong: boolean; at: string };
 }
 
@@ -42,25 +58,12 @@ export type { Receipt };
 
 /** Spec §3.6's IPC path, first leg: dispatch a fixture WorkIntent through the daemon's pipeline. */
 export async function dispatchFixtureWorkIntent(): Promise<FixtureDispatchResponse> {
-  const token = await getToken();
-  const res = await fetch(`${DAEMON_BASE_URL}/fixture/dispatch`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    throw new Error(`daemon responded ${res.status}`);
-  }
+  const res = await daemonFetch("/fixture/dispatch", { method: "POST" });
   return (await res.json()) as FixtureDispatchResponse;
 }
 
 /** Spec §3.6's IPC path, second leg: read the Receipt back over its own separate fetch() call. */
 export async function getReceipt(id: string): Promise<Receipt> {
-  const token = await getToken();
-  const res = await fetch(`${DAEMON_BASE_URL}/receipts/${id}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    throw new Error(`daemon responded ${res.status}`);
-  }
+  const res = await daemonFetch(`/receipts/${id}`);
   return (await res.json()) as Receipt;
 }

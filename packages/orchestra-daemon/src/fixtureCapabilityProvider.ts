@@ -32,12 +32,18 @@ export function runFixtureCapabilityProvider(
 ): { agentRun: AgentRun; receipt: Receipt } {
   const startedAt = new Date().toISOString();
 
+  // AgentRunSchema.lastHeartbeatSummary caps at 280 chars but TaskSpecSchema.slug
+  // has no max length — an unusually long slug would otherwise throw a ZodError
+  // here that propagates unhandled through POST /fixture/dispatch (CodeRabbit,
+  // PR #1 review, 2026-07-18).
+  const heartbeatSummary = `Fixture run for "${taskSpec.slug}" completed — no real agent.`;
+
   const agentRun = AgentRunSchema.parse({
     id: randomUUID(),
     taskSpecId: taskSpec.id,
     provider: "fixture",
     status: "done",
-    lastHeartbeatSummary: `Fixture run for "${taskSpec.slug}" completed — no real agent.`,
+    lastHeartbeatSummary: heartbeatSummary.slice(0, 280),
     startedAt,
     endedAt: startedAt,
     costUsd: 0,

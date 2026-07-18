@@ -51,4 +51,15 @@ describe("runFixtureCapabilityProvider", () => {
     expect(agentRun.status).toBe("failed");
     expect(receipt.outcome).toBe("failed");
   });
+
+  test("an unusually long slug doesn't blow past lastHeartbeatSummary's 280-char cap", () => {
+    // TaskSpecSchema.slug has no max length; AgentRunSchema.lastHeartbeatSummary
+    // does. Without truncation this throws a ZodError instead of returning.
+    const longSlugSpec: TaskSpec = { ...taskSpec, slug: "x".repeat(400) };
+
+    const { agentRun } = runFixtureCapabilityProvider(longSlugSpec);
+
+    expect(agentRun.lastHeartbeatSummary?.length).toBeLessThanOrEqual(280);
+    expect(AgentRunSchema.safeParse(agentRun).success).toBe(true);
+  });
 });

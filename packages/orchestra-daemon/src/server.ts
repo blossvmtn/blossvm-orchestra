@@ -11,18 +11,23 @@ export type DaemonDeps = {
 };
 
 // The cockpit's webview calls this daemon cross-origin (dev: http://localhost:1420,
-// prod: tauri://localhost — see apps/orchestra-cockpit/src-tauri/tauri.conf.json's
-// devUrl) with a custom `authorization` header, which is a non-simple request: the
-// browser sends a preflight OPTIONS first, and blocks the real request if that
-// preflight isn't answered with CORS headers.
+// prod macOS/Linux: tauri://localhost, prod Windows: http://tauri.localhost — see
+// apps/orchestra-cockpit/src-tauri/tauri.conf.json's devUrl, and CodeRabbit's PR #1
+// review, 2026-07-18, for the Windows origin) with a custom `authorization` header,
+// which is a non-simple request: the browser sends a preflight OPTIONS first, and
+// blocks the real request if that preflight isn't answered with CORS headers.
 //
-// Scoped to exactly these two origins, not `*` (security review, 2026-07-18):
-// a wildcard doesn't leak the token by itself, but it does let the browser
-// deliver a preflighted, `authorization`-bearing request from *any* web
-// origin — including a malicious page open in the user's regular browser,
-// nothing to do with this app. Only the cockpit ever legitimately calls this
-// API, so there's no functional cost to naming it explicitly.
-const ALLOWED_ORIGINS = new Set(["http://localhost:1420", "tauri://localhost"]);
+// Scoped to exactly these origins, not `*` (security review, 2026-07-18): a
+// wildcard doesn't leak the token by itself, but it does let the browser deliver
+// a preflighted, `authorization`-bearing request from *any* web origin —
+// including a malicious page open in the user's regular browser, nothing to do
+// with this app. Only the cockpit ever legitimately calls this API, so there's
+// no functional cost to naming it explicitly.
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:1420",
+  "tauri://localhost",
+  "http://tauri.localhost",
+]);
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");

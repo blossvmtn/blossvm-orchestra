@@ -12,6 +12,10 @@ async function statusCommand(): Promise<void> {
   try {
     const res = await fetch(`${DAEMON_BASE_URL}/ping`, {
       headers: { authorization: `Bearer ${token}` },
+      // A daemon that accepts the connection but never responds would
+      // otherwise hang `orchestra status` forever (CodeRabbit, PR #1 review,
+      // 2026-07-18).
+      signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
       console.error(`orchestra: daemon responded ${res.status}`);

@@ -27,6 +27,20 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(`orchestra-daemon listening on http://${server.hostname}:${server.port}`);
+
+  // The cockpit's Rust side reaps this process with SIGKILL on
+  // WindowEvent::Destroyed / RunEvent::ExitRequested (lib.rs) — a graceful
+  // handler here gives the daemon a chance to close idle HTTP connections
+  // cleanly on the more common signal-based exits (Ctrl-C in a terminal,
+  // `kill`), rather than relying solely on that kill (CodeRabbit, PR #1
+  // review, 2026-07-18). SQLite recovers the WAL on next open regardless —
+  // this isn't forcing a checkpoint, just a cleaner HTTP-layer exit.
+  const shutdown = () => {
+    server.stop(true);
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 main().catch((err: unknown) => {
