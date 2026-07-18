@@ -109,3 +109,71 @@ carried forward.
 - The Decisions and Consequences recorded above (D1–D7, D10) — this amendment is additive
   only.
 - Phase 0's acceptance criteria (spec §4) — none of D8/D9/D11/F4 gate P0 completion.
+
+## Amendment 2026-07-18 (session 2) — D14–D25 recorded (Phase 1 kickoff)
+
+### Reason
+
+`docs/specs/2026-07-18-phase-1-worktree-isolation.md` is Phase 1's determined-sequence spec
+— compiled via a paper session with JD, independently plan-critiqued by two blind critics
+(correctness/sequencing + security/architecture lenses), and re-judged clean after fixes.
+This amendment records its ratified decisions at the architecture level, the same way D8/D9/
+D11 were recorded above for P0's spec, so a future session finds them here without
+re-deriving from the spec.
+
+### Decisions
+
+12. **D14 — Claude Code dispatch uses `--bare` + explicit `--settings <json>`** to inject the
+    `PreToolUse` fence hook, since `--bare` skips hook auto-discovery from settings *files*
+    but honors explicitly-passed flags. **Unverified in the docs, named as a real risk**: the
+    `--bare`+`--settings`-injected-hook combination specifically (vs. hooks generally) isn't
+    independently confirmed; first sub-step of P1's provider build is to verify it directly.
+    Fallback: drop `--bare` + set `CLAUDE_CONFIG_DIR` to an empty directory (preserves
+    isolation without `--bare`).
+13. **D15 — the real capability-provider seam is synchronous-after-await**, matching
+    `fixtureCapabilityProvider.ts`'s object shape (not its sync signature — the real one
+    returns a `Promise`). No incremental SQLite progress writes in P1; live progress is
+    deferred, not scheduled to a phase.
+14. **D16 — D9's git-write mutex stays deferred to P2.** P1 is single-lane; no concurrent
+    git writes exist yet to protect against.
+15. **D17 — P1 starts writing real `events` rows (D6).** Payload is the already-validated
+    domain object, JSON-serialized — no new events-specific schema, per D6's own "diary, not
+    replayed" framing.
+16. **D18 — restates D4**: P1 is Claude Code only: no fence-fallback logic for Codex/Cursor
+    this phase.
+17. **D19 — repo registration uses a native Tauri folder picker**, not the legacy app's
+    fuzzy `~/dev/<name>` path-guessing.
+18. **D20 — worktree physical state is a new fifth domain schema, `Worktree`** (path, branch,
+    anchorSha, status, 1:1 with `TaskSpec`) — not fields folded onto `TaskSpec`, since
+    `TaskSpec` is the immutable lane plan and `Worktree` is that lane's live, mutating
+    on-disk state.
+19. **D21 — repo registration is backed by a new minimal `Repo` table**, one row for P1
+    (Linear's own P1 scope: "one repo") — not a JSON registry file.
+20. **D22 — fence-path matching uses Bun's built-in `Bun.Glob`**, no new dependency.
+21. **D23 — `git.ts` is ported near-verbatim from the legacy app**; `gh.ts`'s port is
+    deferred to P2 (its first real consumer). The port adds branch-name validation the
+    legacy code lacked (rejects a leading `-`, an argument-injection gap the plan-critique
+    pass found).
+22. **D24 — P1's cockpit UI stays plain/functional**, extending `App.tsx`'s existing
+    unstyled pattern. No visual design investment — reserved for P3.
+23. **D25 — `--allowedTools` for P1 is `"Read,Edit"` — no `Bash`.** The plan-critique
+    security-lens pass found that granting `Bash` alongside a `PreToolUse` hook matched only
+    on `Edit|Write` made the fence a no-op (`Bash`-tool writes never hit the hook), and —
+    since a git worktree gives no OS-level filesystem confinement — amounted to unrestricted
+    disk access. **Named, accepted residual**: `Read` stays unfenced (the hook doesn't match
+    it either), so the agent can read outside its worktree even though it can't write outside
+    the fence — accepted for P1 (read-exfiltration risk is materially smaller and founder-
+    authored prompts aren't adversarial input), revisit if it's ever worth its own hook.
+
+### Consequences for downstream
+
+- P2's build-readiness review treats D9 (the mutex) and `gh.ts`'s port (D23) as named,
+  planned scope carried forward from here — not rediscovered from the P1 spec.
+- The unfenced-`Read` residual (D25) and the `--bare`+hook risk (D14) are the two things this
+  amendment names as open rather than resolved — neither gates P1, both should be revisited
+  explicitly rather than silently forgotten.
+
+### What this does NOT change
+
+- D1–D13 and the prior "Amendment 2026-07-18" section above — additive only.
+- Phase 0's acceptance criteria — unaffected; P1's own criteria live in its spec §5.
