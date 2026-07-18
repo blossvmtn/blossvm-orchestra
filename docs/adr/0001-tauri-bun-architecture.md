@@ -56,15 +56,18 @@ resulting determined-sequence spec. This ADR is its formal acceptance record.
   (`orchestra-core`/`daemon`/`cli`/`cockpit`) but the separation principle isn't.
 - The five-phase-plus-seed build order (P0→P5) — unchanged from the spec.
 
-## Amendment 2026-07-18 — D8/D9/D11 recorded, implementation deferred (Step 7)
+## Amendment 2026-07-18 — D8/D9/D11 recorded, F4 resolved (Step 7 + PR0 polish)
 
 ### Reason
 
 Spec §3 step 7 requires D8 (fence/hooks), D9 (git-write mutex), and D11 (R4 verification) —
 already ratified in spec §1 — recorded here as accepted with implementation explicitly
 deferred, so P1 builds against a decided, dated record instead of re-deriving them from the
-spec table. Also gives an explicit disposition to F4 (Step 4's Fable review, `HANDOFF.md`),
-a carried-open item Step 6's Opus review flagged as needing one before this session closes.
+spec table. F4 (Step 4's Fable review, `HANDOFF.md`) was first given an explicit
+decided-deferred disposition in this same amendment, then reconsidered same-day before PR0
+opened: D1 already scopes Rust to *supervising* the one daemon child process it spawns, so
+closing F4's gap is completing D1's own scope, not new P1 scope — folded in rather than
+carried forward.
 
 ### Decisions
 
@@ -82,21 +85,24 @@ a carried-open item Step 6's Opus review flagged as needing one before this sess
     himself — no automated verifier is built. Phase 0 performs no real git writes and
     reaches no R4 action, so there is no P0 implementation surface; `Receipt.verification`
     (spec §1.5) exists now and stays `"none"` until a phase actually reaches R4.
-11. **F4 (carried from Step 4's Fable review) — Tauri daemon-supervision cleanup is
-    decided-deferred, not resolved this session.** The daemon child is killed only via
-    `WindowEvent::Destroyed` (`apps/orchestra-cockpit/src-tauri/src/lib.rs`) — no
-    `RunEvent::ExitRequested` net, no `.wait()` after `.kill()`, no orphan-detection on next
-    launch. Combined with Step 4's F3 fix (bind-before-write-token), a daemon orphaned by a
-    cockpit crash now fails the *next* launch loudly at bind instead of silently corrupting
-    a token — an improvement, not a fix. Full process-supervision robustness (an
-    `ExitRequested` net at minimum; whether to detect-and-kill an orphan on next launch is a
-    separate, bigger call) is **explicitly deferred to P1**.
+11. **F4 (Step 4's Fable review) — Tauri daemon-supervision cleanup is resolved, not
+    deferred.** The daemon child was previously killed only via `WindowEvent::Destroyed`
+    (`apps/orchestra-cockpit/src-tauri/src/lib.rs`) — no `RunEvent::ExitRequested` net, no
+    `.wait()` after `.kill()`. Both fixed same-day: a `RunEvent::ExitRequested` handler is
+    now a second kill path (covers Cmd+Q and an app-level quit, not just the window closing),
+    and `.kill()` is followed by `.wait()` so an exited daemon doesn't sit as a zombie.
+    Compile-verified with `cargo check` against the real macOS target this session (Step 4's
+    Fable review only had a headless Linux container available). **Still genuinely open, not
+    silently resolved:** detecting and killing an *orphaned* daemon left by a prior crash, on
+    the *next* cockpit launch, is a separate and bigger call — not attempted here, still a
+    named P1-or-later item if it ever proves necessary in practice.
 
 ### Consequences for downstream
 
 - P1's build-readiness review treats D8/D9/D11's implementation as named, planned scope —
   not something to rediscover from the spec table.
-- P1 also inherits the F4 process-supervision gap as a named item, not a silent carry-forward.
+- F4's cross-launch orphan-detection question (see above) is the one piece of process
+  supervision still open — named here, not silently dropped.
 
 ### What this does NOT change
 

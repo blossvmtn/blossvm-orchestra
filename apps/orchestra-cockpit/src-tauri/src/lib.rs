@@ -93,6 +93,19 @@ fn get_daemon_token() -> Result<String, String> {
     ))
 }
 
+/// Kills the supervised daemon child, if one is still alive, and reaps it.
+/// `Child::kill()` alone only sends the signal — without `.wait()` afterward
+/// the OS keeps the exited process as a zombie until someone collects its
+/// exit status (ADR 0001 amendment 2026-07-18, F4).
+fn kill_daemon(state: &DaemonProcess) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -114,14 +127,21 @@ pub fn run() {
             // it orphaned when the window closes.
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<DaemonProcess>() {
-                    if let Ok(mut guard) = state.0.lock() {
-                        if let Some(mut child) = guard.take() {
-                            let _ = child.kill();
-                        }
-                    }
+                    kill_daemon(&state);
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // `WindowEvent::Destroyed` alone (above) misses a crash/panic and
+            // `RunEvent::ExitRequested` (e.g. Cmd+Q, a force-quit routed
+            // through the app rather than the window) — this is the second
+            // net (ADR 0001 amendment 2026-07-18, F4).
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                if let Some(state) = app_handle.try_state::<DaemonProcess>() {
+                    kill_daemon(&state);
+                }
+            }
+        });
 }
