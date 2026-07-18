@@ -219,15 +219,19 @@ only, no code).
   (Step 4's Fable finding on Tauri daemon-supervision cleanup) is explicitly deferred to P1
   there, not silently carried forward again.
 
-**What's still unverified — the one real gap in this session's work.** Everything above was
-built and tested on headless Linux, same as Session 1. Spec §4's acceptance criteria require
-JD to click "Dispatch fixture work intent" in the *real* Tauri cockpit window on his own Mac
-and watch a Receipt render — literal pixels, a real WKWebView, the real Rust-resolved token.
-That has not happened. The CORS fix above is reasoned from first principles (cross-origin +
-custom header ⇒ preflight ⇒ needs `OPTIONS`/CORS headers) and proven correct against a real
-loopback socket in `server.test.ts`, but a WKWebView's actual preflight behavior has not been
-observed directly — this is the single highest-value thing to check first on a real Mac.
-Run `bun run cockpit:dev` from repo root, click the button, confirm the Receipt renders.
+**Real-Mac verification — done, 2026-07-18, same day.** `bun run cockpit:dev` needed two
+one-time machine setup steps neither Session 1 nor Session 2 had hit before (this Mac had
+neither Bun nor the Rust toolchain installed): Bun via `brew install oven-sh/bun/bun`, Rust
+via `rustup` (the standard installer), plus adding `. "$HOME/.cargo/env"` to `~/.zshrc` since
+`rustup`'s installer only wired it into `~/.profile`, which zsh doesn't source. Xcode Command
+Line Tools were already present. Once both toolchains were on `PATH`, `cargo metadata`
+resolved cleanly and `bun run cockpit:dev` compiled and launched the real Tauri window.
+
+JD clicked "Dispatch fixture work intent" in the real cockpit window and confirmed by
+screenshot: `daemon reachable`, then a rendered Receipt — `outcome: succeeded`,
+`verification: none`, the fixture summary text — literal pixels, real WKWebView, real
+Rust-resolved token. The CORS fix from Step 6 held on first try against the real webview.
+**All three of spec §4's acceptance criteria are now met.** Phase 0 is complete.
 
 Verification commands re-confirmed clean at the end of this session (same as Session 1's
 list, now with more tests): `bun run test` (core 19/19, daemon 22/22 — was 4/4 at Step 4);
