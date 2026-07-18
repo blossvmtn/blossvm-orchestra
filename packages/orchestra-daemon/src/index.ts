@@ -5,3 +5,5 @@ export { readToken, generateAndWriteToken } from "./token";
 export { createFetchHandler, type DaemonDeps } from "./server";
 export { createDb, type OrchestraDb } from "./db/db";
 export * as schema from "./db/schema";
+export { rowToWorkIntent, rowToTaskSpec, rowToAgentRun, rowToReceipt } from "./db/mappers";
+export { runFixtureCapabilityProvider } from "./fixtureCapabilityProvider";
