@@ -1,6 +1,11 @@
 // Pure domain logic and schema contracts. Zero I/O — see
 // docs/specs/2026-07-18-phase-0-constitutional-seed.md §1.5.
-export { WorkIntentSchema, type WorkIntent } from "./workIntent";
+export {
+  WorkIntentSchema,
+  WorkIntentStatusSchema,
+  type WorkIntent,
+  type WorkIntentStatus,
+} from "./workIntent";
 export {
   TaskSpecSchema,
   RiskTierSchema,

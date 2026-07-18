@@ -12,10 +12,12 @@
   },
   "dependencies": {
     "@orchestra/core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5.8.2"
   }
 }

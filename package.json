@@ -15,6 +15,7 @@
     "cli:dev": "bun run --cwd packages/orchestra-cli dev",
     "cockpit:dev": "bun run --cwd apps/orchestra-cockpit tauri dev",
     "cockpit:web": "bun run --cwd apps/orchestra-cockpit dev",
-    "web-legacy:dev": "npm run --prefix apps/orchestra-web-legacy dev"
+    "web-legacy:dev": "npm run --prefix apps/orchestra-web-legacy dev",
+    "test": "bun run core:test && bun run daemon:test"
   }
 }

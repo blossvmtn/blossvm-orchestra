@@ -9,6 +9,10 @@ export function tokenPath(): string {
   return path.join(orchestraHome(), "daemon.token");
 }
 
+export function dbPath(): string {
+  return path.join(orchestraHome(), "orchestra.db");
+}
+
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — chosen to avoid
 // common dev-server collisions (3000, 5173, 8080, ...).
 export const DAEMON_PORT = 41417;
