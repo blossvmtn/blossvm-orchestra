@@ -2,9 +2,28 @@ import { randomUUID } from "node:crypto";
 import {
   WorkIntentSchema,
   TaskSpecSchema,
+  RepoSchema,
   type WorkIntent,
   type TaskSpec,
+  type Repo,
 } from "@orchestra/core";
+
+/**
+ * Same slug as fixtureWorkIntent's repoSlug — since work_intents.repoSlug
+ * gained a FK to repos.slug in Phase 1 (spec §2, D21), the fixture dispatch
+ * path needs a matching repos row to exist before it can insert a WorkIntent
+ * at all (re-judge pass, 2026-07-18: this FK broke the fixture path when it
+ * first landed, since nothing seeded one).
+ */
+export function fixtureRepo(overrides?: Partial<Repo>): Repo {
+  const base: Repo = {
+    id: randomUUID(),
+    slug: "blossvm-orchestra",
+    rootPath: "/fixture/blossvm-orchestra",
+    registeredAt: new Date().toISOString(),
+  };
+  return RepoSchema.parse({ ...base, ...overrides });
+}
 
 /**
  * Fixture WorkIntent/TaskSpec builders for Step 6's two end-to-end

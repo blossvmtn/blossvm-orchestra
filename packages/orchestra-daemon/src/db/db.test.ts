@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createDb } from "./db";
-import { workIntents, taskSpecs, agentRuns, receipts, events } from "./schema";
+import { workIntents, taskSpecs, agentRuns, receipts, events, repos } from "./schema";
 import { eq } from "drizzle-orm";
 
 // Every test opens its own in-memory database — real SQLite, real migrations
@@ -9,9 +9,23 @@ function freshDb() {
   return createDb(":memory:");
 }
 
+// work_intents.repoSlug carries a FK to repos.slug (Phase 1, D21) — every
+// test inserting a WorkIntent needs a matching repo seeded first.
+function seedRepo(db: ReturnType<typeof freshDb>, slug = "blossvm-orchestra") {
+  db.insert(repos)
+    .values({
+      id: `repo_${slug}`,
+      slug,
+      rootPath: `/repos/${slug}`,
+      registeredAt: "2026-07-18T16:00:00.000Z",
+    })
+    .run();
+}
+
 describe("orchestra-daemon SQLite schema", () => {
-  test("migrations create all five tables and a row round-trips per table", () => {
+  test("migrations create all seven tables and a row round-trips per table", () => {
     const db = freshDb();
+    seedRepo(db);
 
     db.insert(workIntents)
       .values({
@@ -76,6 +90,7 @@ describe("orchestra-daemon SQLite schema", () => {
 
   test("two task specs can share one work intent (the 1:N fan-out)", () => {
     const db = freshDb();
+    seedRepo(db);
     db.insert(workIntents)
       .values({
         id: "wi_2",
@@ -116,6 +131,24 @@ describe("orchestra-daemon SQLite schema", () => {
 
     const rows = db.select().from(taskSpecs).where(eq(taskSpecs.workIntentId, "wi_2")).all();
     expect(rows).toHaveLength(2);
+  });
+
+  test("a work intent naming an unregistered repo slug is rejected (Phase 1, D21)", () => {
+    const db = freshDb();
+
+    expect(() =>
+      db
+        .insert(workIntents)
+        .values({
+          id: "wi_orphan",
+          planId: "plan_orphan",
+          repoSlug: "never-registered",
+          intent: "Should not be insertable",
+          status: "captured",
+          createdAt: "2026-07-18T16:00:00.000Z",
+        })
+        .run(),
+    ).toThrow(/FOREIGN KEY constraint failed/);
   });
 
   test("inserting twice for the same entity keeps both rows (no upsert-in-place)", () => {

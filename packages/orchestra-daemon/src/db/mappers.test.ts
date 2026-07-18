@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { WorkIntentSchema, TaskSpecSchema, AgentRunSchema, ReceiptSchema } from "@orchestra/core";
 import { createDb } from "./db";
-import { workIntents, taskSpecs, agentRuns, receipts } from "./schema";
+import { workIntents, taskSpecs, agentRuns, receipts, repos } from "./schema";
 import { rowToWorkIntent, rowToTaskSpec, rowToAgentRun, rowToReceipt } from "./mappers";
 
 function freshDb() {
@@ -20,8 +20,20 @@ const RC_1 = "d290f1ee-6c54-4b01-90e6-d701748f0006";
 
 // PRAGMA foreign_keys = ON (schema.ts, CodeRabbit PR #1 review, 2026-07-18)
 // means every taskSpec/agentRun/receipt insert below now needs its parent row
-// to actually exist first — these two helpers seed exactly that.
+// to actually exist first — these helpers seed exactly that.
+function seedRepo(db: ReturnType<typeof freshDb>, slug = "blossvm-orchestra") {
+  db.insert(repos)
+    .values({
+      id: `repo_${slug}`,
+      slug,
+      rootPath: `/repos/${slug}`,
+      registeredAt: "2026-07-18T16:00:00.000Z",
+    })
+    .run();
+}
+
 function seedWorkIntent(db: ReturnType<typeof freshDb>, id: string) {
+  seedRepo(db);
   db.insert(workIntents)
     .values({
       id,

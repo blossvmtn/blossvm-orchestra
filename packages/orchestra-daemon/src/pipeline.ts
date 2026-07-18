@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { WorkIntent, TaskSpec, AgentRun, Receipt } from "@orchestra/core";
 import type { OrchestraDb } from "./db/db";
-import { workIntents, taskSpecs, agentRuns, receipts } from "./db/schema";
+import { repos, workIntents, taskSpecs, agentRuns, receipts } from "./db/schema";
 import { rowToReceipt } from "./db/mappers";
-import { fixtureWorkIntent, fixtureTaskSpec } from "./fixtures";
+import { fixtureRepo, fixtureWorkIntent, fixtureTaskSpec } from "./fixtures";
 import { runFixtureCapabilityProvider } from "./fixtureCapabilityProvider";
 
 export type FixtureDispatchResult = {
@@ -33,6 +33,9 @@ export function dispatchFixtureWorkIntent(db: OrchestraDb): FixtureDispatchResul
   // a failure partway through must not leave an orphan WorkIntent/TaskSpec
   // with no matching Receipt.
   db.transaction((tx) => {
+    // work_intents.repoSlug gained a FK to repos.slug in Phase 1 (D21) — seed
+    // a matching repo first (idempotent: repeated dispatches share one row).
+    tx.insert(repos).values(fixtureRepo()).onConflictDoNothing().run();
     tx.insert(workIntents).values(workIntent).run();
     tx.insert(taskSpecs).values(taskSpec).run();
     tx.insert(agentRuns).values(agentRun).run();
