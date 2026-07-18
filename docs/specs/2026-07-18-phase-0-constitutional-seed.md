@@ -1,10 +1,10 @@
 # Phase 0 — Constitutional Seed
 
-**Status:** Determined — zero open decisions. Ready to build.
+**Status:** Revised post plan-critique (2026-07-18) — see §6 Revision log. Zero open decisions remaining.
 **Repo:** `blossvmtn/blossvm-orchestra`
 **Branch:** `claude/orchestra-workflow-architecture-mwijvk`
-**Supersedes:** `docs/ORCHESTRA-CONSTITUTION-v2.md` §11 (Tauri deferred), §16.OD1 (model pin), §24 (create-t3-app as terminal architecture)
-**Does not supersede:** Constitution v2 §26 (git safety via `execFile`, no shell interpolation), §27 module-boundary spirit (ownership separation, even though the concrete modules are renamed below)
+**Supersedes:** `docs/ORCHESTRA-CONSTITUTION-v2.md` §12 Non-goals (the Electron/Tauri deferral only) and §11's **OD1 row specifically** (the `gemma4:31b` model pin) — corrected citation; the Constitution has sections §0–§12 only, no §16/§24/§26/§27.
+**Does NOT supersede — still in force:** §11's **OD2** (`FenceSpec` in `state.json` is source of truth) and **OD3** (T3-mirror stacked dirty-tree semantics) and **PATH** rows — D8 and D9 below depend on these. §2 Stack (git safety via `execFile`, no shell interpolation — still binding). §6 Module boundaries (ownership-separation spirit — the concrete modules are renamed below, the separation principle isn't).
 
 ---
 
@@ -47,6 +47,71 @@ P1 begins with **one** capability provider (Claude Code) not because the others 
 
 ---
 
+## 1.5 Contract definitions (resolves plan-critique F1, F4)
+
+Concrete field sets for the four D7 schemas — mapped from the existing packet types in `schemas.ts` where a field genuinely carries over, marked **new** where it doesn't. This section is the actual deliverable of Phase 0; §3 steps 3–6 build against it, not against prose.
+
+### `WorkIntent` — one per founder-stated goal (was: the manifest's top-level fields, minus the workers array)
+
+| Field | Type | Source |
+|---|---|---|
+| `id` | uuid | new |
+| `planId` | uuid | carried from `OrchestraManifestSchema.planId` |
+| `repoSlug` | string | carried |
+| `intent` | string | carried |
+| `status` | `"captured" \| "scoped" \| "planned" \| "closed"` | new — the intent-level slice of the state machine; task-level status lives on `AgentRun` |
+| `createdAt` | ISO8601 | new |
+
+### `TaskSpec` — one per worker lane. **N per `WorkIntent`, not 1:1.** This is the fan-out that makes parallel lanes possible — the original prose implied a false 1:1 split.
+
+| Field | Type | Source |
+|---|---|---|
+| `id` | uuid | new |
+| `workIntentId` | uuid (fk) | new — the explicit fan-out link `ORCHESTRA-MANIFEST` never needed, since it nested workers inline |
+| `slug` | string | carried from `ManifestWorker.slug` |
+| `branch` | string | carried |
+| `role` | string | carried |
+| `modelHint` | string, optional | carried |
+| `allowedPaths` | string[] | carried |
+| `forbiddenPaths` | string[] | carried |
+| `acceptance` | string[] | carried |
+| `riskTier` | `"R0"\|"R1"\|"R2"\|"R3"\|"R4"` | new — field exists from P0 so P1's D8/D9 work has somewhere to land; always unset until P1 |
+| `createdAt` | ISO8601 | new |
+
+### `AgentRun` — one per actually-dispatched process. **This entire schema is new.** `WORKTREE-SYNC-LOG` is a heartbeat *within* a run, not the run itself — it has no run identity, no start/end time, no provider. Conflating the two was the actual bug in the original mapping.
+
+| Field | Type | Source |
+|---|---|---|
+| `id` | uuid | new |
+| `taskSpecId` | uuid (fk) | new |
+| `provider` | `"claude-code"\|"codex"\|"cursor"\|"fixture"` | new — `"fixture"` is what P0's fake adapter writes |
+| `claudeSessionId` | string, optional | new — populated from the real `system`/`init` event's `session_id` once P1 wires real driving (§2 anchor); null for every P0 run |
+| `status` | `"queued"\|"running"\|"blocked"\|"done"\|"failed"` | new |
+| `lastHeartbeatSummary` | string, ≤280 chars, optional | this is where `SyncLogSchema.summary` actually lives now — a run's latest known status, not a separate object |
+| `startedAt` | ISO8601 | new |
+| `endedAt` | ISO8601, optional | new |
+| `costUsd` | number, optional | new — sourced from the real `result` event's cost field (§2 anchor) once P1 wires real driving |
+
+### `Receipt` — one per completed `AgentRun`. `PR-BRIEF` genuinely becomes *part* of this, not all of it — the fields below name what the rest is and where it comes from.
+
+| Field | Type | Source |
+|---|---|---|
+| `id` | uuid | new |
+| `agentRunId` | uuid (fk) | new |
+| `taskSpecId` | uuid (fk, denormalized) | new |
+| `outcome` | `"succeeded"\|"failed"\|"cancelled"` | new |
+| `summary` | string | new |
+| `prUrl` | string, optional | carried from `PrBriefSchema.prUrl` |
+| `prTitle` | string, optional | carried from `PrBriefSchema.title` |
+| `filesTouched` | string[], optional | new |
+| `verification` | `"none"\|"human_acceptance_walk"` | new — ties to D11; always `"none"` for P0's fixture receipts since nothing real happened |
+| `costUsd` | number, optional | carried forward from the parent `AgentRun` |
+| `createdAt` | ISO8601 | new |
+
+`CONDUCTOR-OVERRIDE` maps to nothing in this list — it's a broadcast instruction, not a lifecycle record, and stays its own packet type per D7's scope (not modeled as a P0 schema; revisit if a later phase needs it as one).
+
+---
+
 ## 2. Ground-truth anchors
 
 | Claim | Status |
@@ -55,37 +120,35 @@ P1 begins with **one** capability provider (Claude Code) not because the others 
 | `vercel/pkg` is archived, deprecated since January 2024, last release 5.8.1, no further maintenance | **VERIFIED** — web search this session, GitHub archive notice |
 | Bun stable (1.3.x) remains Zig-based; the Rust rewrite is canary-only via `bun upgrade --canary`; canary is Linux x64 glibc only, macOS/Windows/ARM support not yet shipped | **VERIFIED** — web search this session |
 | Herdr is dual-licensed AGPL-3.0-or-later / commercial, single unified `LICENSE` covering the whole repo (not a split open-core model) | **VERIFIED** — direct `LICENSE` file read this session |
-| Claude Code supports `--output-format stream-json` for structured non-interactive output and `PreToolUse` hooks for deterministic tool-call gating | **NOT independently re-verified this session** — asserted by the Opus critique agent from training knowledge. Re-confirm against current Claude Code docs at P1 kickoff, before the D4/D8 implementation begins. |
+| Claude Code supports `-p --output-format stream-json` (NDJSON: one JSON object per line — `system`/`init`, `assistant`, `user`, `result`, plus `system`/`api_retry` with a full documented field table). The terminal `result` line carries final text, cost, and session metadata directly usable as a `Receipt`. `--bare` mode skips hooks/skills/plugins/CLAUDE.md for reproducible dispatch. `--allowedTools`/`--permission-mode acceptEdits` is a real, already-built tool-fence mechanism, a live alternative or complement to a custom `PreToolUse` hook for D8. | **PARTIALLY VERIFIED 2026-07-18** — confirmed live via `code.claude.com/docs/en/headless`: the flag, NDJSON event types, the `result` terminal event, `--bare`, `--allowedTools`/`--permission-mode` all real and documented with field-level detail. NOT yet seen: the exact `tool_use`/`tool_result` JSON field shapes (referenced by the docs, not shown verbatim) — needed before `AgentRun`'s field set can be called final (see plan-critique F7). |
 
 ---
 
 ## 3. Determined build sequence
 
-1. Land this spec + a short ADR entry in `docs/adr/` recording D1–D13 as accepted, explicitly marking Constitution v2 §11/§16.OD1/§24 as superseded (not deleted — historical record stays).
-2. Scaffold the four-package skeleton:
-   - `orchestra-core` — pure TypeScript domain logic, zero I/O. Empty except type/schema exports at this stage.
-   - `orchestra-daemon` — Bun entry point (`daemon.ts`). Boots, opens a local socket, responds to one `ping` command. Spawns nothing yet.
-   - `orchestra-cli` — scriptable entry point, separate from any GUI. A single `status` command that calls the daemon's `ping`.
-   - `orchestra-cockpit` — Tauri v2 + Vite + React scaffold. One screen. Calls `orchestra-daemon`'s `ping` through Tauri's sidecar IPC and renders the result.
-   - The existing Next.js app is untouched, in its current location, still runnable via `npm run dev`.
-3. Define the four Phase-0 schemas (`WorkIntent`, `TaskSpec`, `AgentRun`, `Receipt`) as Zod schemas in `orchestra-core`, explicitly mapped from the existing packet types rather than invented fresh:
-   - `ORCHESTRA-MANIFEST` → splits into `WorkIntent` (the founder's stated goal) + `TaskSpec` (one worker's bounded assignment)
-   - `WORKTREE-SYNC-LOG` → becomes `AgentRun` progress state
-   - `PR-BRIEF` → becomes part of `Receipt`
-4. Stand up SQLite (Drizzle) in `orchestra-daemon`: one materialized table per schema above, plus one append-only `events` table (D6). No business logic writes to them yet — schema and migration only.
-5. Write a fake capability-provider adapter — deterministic, no real agent, no real git — mirroring the existing `fixtures.ts` pattern already in the v0 code. It accepts a `TaskSpec` and produces a fixture `AgentRun` and `Receipt`.
-6. Write one end-to-end verification: a fixture `WorkIntent` flows through `TaskSpec` → fake `AgentRun` → `Receipt`, lands in SQLite, is retrievable from the materialized tables, and the test explicitly asserts the event table is never read to reconstruct state (D6 proven, not just stated).
+1. Land this spec + a short ADR entry in `docs/adr/` recording D1–D13 as accepted, explicitly marking Constitution v2 §12's Tauri/Electron non-goal and §11's **OD1 row only** as superseded — OD2, OD3, and PATH in the same §11 table remain in force (not deleted — historical record stays).
+2. Scaffold the four-package skeleton as a workspace: `packages/orchestra-core`, `packages/orchestra-daemon`, `packages/orchestra-cli`, `apps/orchestra-cockpit`. The existing Next.js app moves to `apps/orchestra-web-legacy` via `git mv` (a location change, not a rewrite — `npm run dev` inside that folder behaves identically, so D13 stays literally true).
+   - `orchestra-core` — pure TypeScript domain logic, zero I/O. Empty except the §1.5 Zod schema exports at this stage.
+   - `orchestra-daemon` — Bun entry point (`daemon.ts`). A long-lived server listening on a **Unix domain socket** at `~/.orchestra/daemon.sock` — not TCP, no port to collide, no network exposure, matches the local-first posture already established. Responds to one `ping` command. Spawns nothing yet.
+   - `orchestra-cli` — scriptable entry point, separate from any GUI. A single `status` command that connects to the same socket directly and calls `ping`. Works with or without Tauri running.
+   - `orchestra-cockpit` — Tauri v2 + Vite + React scaffold. On launch, Tauri's Rust side spawns `bun run daemon.ts` as a **plain child process** (`std::process::Command`) — this is the one process D1 scopes Rust to supervise. This deliberately does **not** use Tauri's `externalBin`/sidecar-bundling feature, which expects a compiled, platform-suffixed binary — D3 defers compilation to P5, so that mechanism doesn't apply yet. Rust resolves the `bun` binary's absolute path explicitly (checked install locations, or a one-time settings prompt) rather than trusting inherited shell `PATH` — GUI-launched macOS apps get a minimal PATH that typically excludes a Homebrew install, and this is the single most likely P0 failure mode on JD's machine if left implicit. The cockpit UI talks to the daemon directly over the same Unix socket, not through Rust as a relay.
+3. Implement the four Phase-0 schemas exactly as specified in §1.5 above, as Zod schemas in `orchestra-core` — including the 1:N `WorkIntent`→`TaskSpec` cardinality.
+4. Stand up SQLite (Drizzle) in `orchestra-daemon`: one materialized table per §1.5 schema, plus one append-only `events` table (D6). No business logic writes to them yet — schema and migration only.
+5. Write a fake capability-provider adapter — deterministic, no real agent, no real git — mirroring the existing `fixtures.ts` pattern already in the v0 code. It accepts a `TaskSpec` and produces a fixture `AgentRun` (`provider: "fixture"`) and `Receipt` (`verification: "none"`).
+6. Write **two** end-to-end verifications, not one:
+   - **The contract path**: a fixture `WorkIntent` flows through `TaskSpec` → fake `AgentRun` → `Receipt`, lands in SQLite, is retrievable from the materialized tables. The test asserts the *read path sources only materialized tables* — a provable claim, unlike an unprovable universal "never read anywhere."
+   - **The IPC path**: the same fixture `WorkIntent` is submitted from `orchestra-cockpit`'s UI, over the real Unix-socket connection, to `orchestra-daemon`, and the resulting `Receipt` is read back the same way. This is the actual architecture bet Phase 0 exists to de-risk (a real schema surviving the real Tauri↔Bun boundary) — the contract path alone never touches it.
 7. Record D8 (fence/hooks), D9 (git mutex), and D11 (R4 verification) as short, dated entries in `docs/adr/` — decision recorded, implementation explicitly deferred to the phase named in §1.
 
 ---
 
 ## 4. Acceptance (exit criteria)
 
-- [ ] Steps 1–7 above are complete.
-- [ ] A fixture `WorkIntent` reaches a stored `Receipt` with zero model calls, zero real git operations, zero real agent CLI involvement.
-- [ ] `orchestra-cockpit` (Tauri) launches and successfully round-trips one typed command to `orchestra-daemon` (Bun) over local IPC.
-- [ ] The existing Next.js v0 app still runs, untouched, via `npm run dev`.
-- [ ] All of §1's decisions exist in the repo as committed text (this spec + ADR entries) — not only in chat history.
+- [ ] Steps 1–7 above are complete, including both end-to-end verifications in step 6.
+- [ ] A fixture `WorkIntent`, submitted from the real Tauri cockpit UI over the real daemon socket, reaches a stored `Receipt` — zero model calls, zero real git operations, zero real agent CLI involvement, but a genuine IPC round-trip, not a simulated one.
+- [ ] JD can trigger the fixture flow from the cockpit window and watch the resulting `Receipt` render on screen — observable by looking, not by reading a log.
+- [ ] The existing Next.js v0 app still runs, unchanged, from its new `apps/orchestra-web-legacy` location via `npm run dev`.
+- [ ] All of §1's decisions and §1.5's schemas exist in the repo as committed text (this spec + ADR entries) — not only in chat history.
 
 ## 5. Out of scope for Phase 0 (explicitly deferred, not dropped)
 
@@ -98,3 +161,18 @@ P1 begins with **one** capability provider (Claude Code) not because the others 
 - Codex and Cursor adapters (P5)
 - Sakura Home / any shared Runtime core (not scheduled — D10)
 - Herdr-inspired live agent-state detection (not scheduled — D12, likely P3+ if ever)
+
+---
+
+## 6. Revision log
+
+**2026-07-18 — plan-critique run (verdict: ESCALATED), all findings resolved same-day:**
+
+- **F1/F4 (BLOCKING/SHOULD-FIX)** — the four schemas had no field definitions anywhere; "zero open decisions" was false for the phase's central deliverable. Added §1.5 with concrete, sourced field tables for all four. Corrected the `WorkIntent`→`TaskSpec` cardinality from an implied 1:1 to the real 1:N fan-out. Named `AgentRun` as an entirely new schema (not a renamed sync-log) and `Receipt`'s non-PR fields explicitly.
+- **F2 (BLOCKING)** — every Constitution v2 section citation in the header and step 1 was wrong (the document has §0–§12 only; §16/§24/§26/§27 don't exist). Worse, the original wording would have instructed superseding all of §11, which contains OD2/OD3/PATH — decisions this very spec still depends on. Corrected to the real sections and scoped the supersession to exactly what changed.
+- **F3 (BLOCKING)** — the Tauri↔Bun IPC transport was named two incompatible ways and never specified; it's also the one seam P0 exists to de-risk. Named it concretely: a Unix domain socket, Rust spawning the daemon via plain process-spawn (not Tauri's compiled-binary sidecar feature, correctly reconciled with D3), and the macOS minimal-PATH failure mode named with a resolution.
+- **F5 (SHOULD-FIX)** — the original single verification never crossed the Tauri↔Bun boundary and asserted an unprovable negative. Split into two verifications (contract path, IPC path) and downgraded the D6 claim to what a test can actually show.
+- **F6 (SHOULD-FIX)** — the four-package layout collided, unstated, with "the Next.js app is untouched." Named the workspace layout explicitly; the existing app moves via `git mv`, not a rewrite.
+- **F7** — closed same-session, ahead of the P1-kickoff deadline originally set: the stream-json ground-truth anchor is now live-verified against current docs (NDJSON event types, the `result` event, `--bare`, `--allowedTools`), not resting on the critique agent's training knowledge alone.
+- **F8 (NIT)** — reworded the ambiguous "round-trips one typed command" acceptance line to something JD can observe on screen.
+- **F9 (NIT, disclosed, not fixed)** — P0 still has no human-observable payoff against the daily pain this rebuild exists to fix. Accepted as inherent to a seed phase; first real relief is P1. Not a defect, named so it isn't mistaken for one.
