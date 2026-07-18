@@ -17,6 +17,14 @@ node_modules
 /**/*.sqlite-journal
 /**/daemon.token
 
+# Phase 1 (spec docs/specs/2026-07-18-phase-1-worktree-isolation.md, PATH
+# convention): real, locally-created git worktrees — a full nested checkout
+# per dispatched lane, including its own .git. Never source, always runtime
+# state; can even land inside this repo itself if it's ever registered as
+# its own test target.
+/.orchestra/
+/**/.orchestra/
+
 # testing
 /coverage
 
