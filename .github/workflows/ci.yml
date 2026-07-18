@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Does NOT compile the Rust/Tauri side (apps/orchestra-cockpit/src-tauri) — a
+# `cargo check` on ubuntu-latest needs system libs (webkit2gtk, libgtk-3, …)
+# that aren't installed here. Deliberately deferred, not a silent gap: the
+# four TypeScript packages/apps are the whole workspace except Rust.
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the exact version verified working during Phase 0 (2026-07-18)
+      # rather than "latest" — an upstream Bun release breaking unrelated CI is
+      # a distraction this repo doesn't need; bump deliberately when there's a
+      # reason to.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - run: bun install
+
+      - run: bun run test
+
+      - run: bunx tsc --noEmit
+        working-directory: packages/orchestra-core
+
+      - run: bunx tsc --noEmit
+        working-directory: packages/orchestra-daemon
+
+      - run: bunx tsc --noEmit
+        working-directory: packages/orchestra-cli
+
+      - run: bunx tsc --noEmit
+        working-directory: apps/orchestra-cockpit
+
+      # Confirms the committed migrations still match schema.ts — the same
+      # check run by hand before every schema-touching commit so far.
+      - run: bunx drizzle-kit check
+        working-directory: packages/orchestra-daemon
