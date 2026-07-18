@@ -1,4 +1,13 @@
-# Handoff — Phase 0, after Step 4 (2026-07-18)
+# Handoff — Phase 0, after Step 7 (2026-07-18)
+
+**Update, same date, later in the session:** Steps 5, 6, and 7 (below, originally written as
+the next session's TODO) are now done — see the three newest commits and the "Session 2"
+note at the bottom of this file for what actually shipped and the one thing still unverified
+(JD's real Mac). The rest of this file is left as written for the historical record of what
+Session 1 handed off; don't take its checklist at face value without reading the update at
+the bottom.
+
+# Handoff — Phase 0, after Step 4 (2026-07-18) — Session 1's original handoff
 
 Written because this session hit its context window mid-build. Read this before touching
 anything — it has the state a fresh session has no memory of.
@@ -175,3 +184,60 @@ will be the first thing Step 6 tries to persist and read back — better to deci
 approach here than discover it mid-Step-6. Delete this file (`HANDOFF.md`) once its content
 has been fully absorbed into normal working memory for the session, or leave it — JD hasn't
 stated a preference either way.
+
+---
+
+## Session 2 update — Steps 5, 6, 7 done (2026-07-18, same day)
+
+Model routing followed exactly as instructed above: Sonnet wrote every line, Opus reviewed
+both Step 5 and Step 6 in fresh context before commit, Fable was not invoked (nothing met
+the "specific, deliberately-chosen checkpoint" bar this pass). Three new commits on this
+branch, oldest to newest: `2815b57` (Step 5) → `9cff8b6` (Step 6) → this one (Step 7, ADR
+only, no code).
+
+- **Step 5 — F2 resolved, fake adapter built.** `packages/orchestra-daemon/src/db/mappers.ts`
+  converts Drizzle's `null` to `undefined` for every optional field across all four §1.5
+  schemas before `Schema.parse()` sees a row (the recommended approach from the Step 4
+  handoff — keeps `@orchestra/core` persistence-agnostic). `fixtureCapabilityProvider.ts` is
+  the adapter itself, placed in `orchestra-daemon` (not `-core`) since P1's real providers
+  will need I/O and belong there too.
+- **Step 6 — both end-to-end verifications built and automated.** `pipeline.ts`'s
+  `dispatchFixtureWorkIntent`/`getReceiptById` are the contract path
+  (`pipeline.test.ts` proves the read sources only materialized tables, not just asserts it).
+  `server.ts` grew `POST /fixture/dispatch` + `GET /receipts/:id`; `server.test.ts` binds a
+  real `Bun.serve()` on an ephemeral port and drives it with real `fetch()` over a real
+  loopback socket — the closest an automated test gets to the IPC path without a real Tauri
+  window. **Opus's review caught a real gap before commit:** the daemon had no CORS
+  handling, so the cockpit's cross-origin `fetch()` (carrying a custom `authorization`
+  header, forcing a preflight) would have failed before ever reaching the auth check — the
+  one class of bug a loopback-only automated test structurally cannot see. Fixed with an
+  `OPTIONS` handler + CORS headers on every response; this completes the already-locked
+  "plain fetch(), no Tauri relay" decision (spec §3 step 2), it doesn't reopen it. `App.tsx`
+  grew a "Dispatch fixture work intent" button + Receipt render for the manual click-through.
+- **Step 7 — D8/D9/D11 recorded, plus F4 given an explicit disposition.** See the
+  "Amendment 2026-07-18" section appended to `docs/adr/0001-tauri-bun-architecture.md`. F4
+  (Step 4's Fable finding on Tauri daemon-supervision cleanup) is explicitly deferred to P1
+  there, not silently carried forward again.
+
+**What's still unverified — the one real gap in this session's work.** Everything above was
+built and tested on headless Linux, same as Session 1. Spec §4's acceptance criteria require
+JD to click "Dispatch fixture work intent" in the *real* Tauri cockpit window on his own Mac
+and watch a Receipt render — literal pixels, a real WKWebView, the real Rust-resolved token.
+That has not happened. The CORS fix above is reasoned from first principles (cross-origin +
+custom header ⇒ preflight ⇒ needs `OPTIONS`/CORS headers) and proven correct against a real
+loopback socket in `server.test.ts`, but a WKWebView's actual preflight behavior has not been
+observed directly — this is the single highest-value thing to check first on a real Mac.
+Run `bun run cockpit:dev` from repo root, click the button, confirm the Receipt renders.
+
+Verification commands re-confirmed clean at the end of this session (same as Session 1's
+list, now with more tests): `bun run test` (core 19/19, daemon 22/22 — was 4/4 at Step 4);
+`bunx tsc --noEmit` clean in all four packages/apps (`orchestra-core`, `orchestra-daemon`,
+`orchestra-cli`, `orchestra-cockpit`); `bunx drizzle-kit check` from `packages/orchestra-daemon`
+clean (no drift — Steps 5-7 touched no migrations). Rust/Tauri build itself was not
+re-verified this session (no Rust files changed since Step 2); still needs the real-Mac
+click-through above regardless.
+
+Bun was not installed on this machine at the start of this session (installed via
+`brew install oven-sh/bun/bun`, then `bun install` at repo root) — worth noting since Session
+1's container had it preinstalled and this one didn't; a fresh session/container should
+expect to do this step if `bun --version` fails.

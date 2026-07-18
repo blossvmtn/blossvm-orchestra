@@ -55,3 +55,51 @@ resulting determined-sequence spec. This ADR is its formal acceptance record.
 - §6 Module boundaries' ownership-separation spirit — the concrete modules are renamed
   (`orchestra-core`/`daemon`/`cli`/`cockpit`) but the separation principle isn't.
 - The five-phase-plus-seed build order (P0→P5) — unchanged from the spec.
+
+## Amendment 2026-07-18 — D8/D9/D11 recorded, implementation deferred (Step 7)
+
+### Reason
+
+Spec §3 step 7 requires D8 (fence/hooks), D9 (git-write mutex), and D11 (R4 verification) —
+already ratified in spec §1 — recorded here as accepted with implementation explicitly
+deferred, so P1 builds against a decided, dated record instead of re-deriving them from the
+spec table. Also gives an explicit disposition to F4 (Step 4's Fable review, `HANDOFF.md`),
+a carried-open item Step 6's Opus review flagged as needing one before this session closes.
+
+### Decisions
+
+8. **D8 — fence enforcement is decided, not built at P0.** Claude Code gets a real
+   `PreToolUse` hook checking Edit/Write paths against the fence and denying violations;
+   Codex gets its OS-level sandbox scoped to the worktree root; Cursor's `.cursor/rules`
+   stay advisory. Constitution v2's "physical isolation" language is corrected: the git
+   worktree boundary is the real hard isolation, the fence a softer secondary constraint.
+   **Implemented: P1.**
+9. **D9 — git-write concurrency is decided, not built at P0.** A per-repo mutex in the
+   daemon will serialize all git *write* operations across lanes, since worktrees share one
+   `.git` object store. **Implemented: whenever P1/P2 first touch real git writes.**
+10. **D11 — R4 verification is decided, moot for P0.** R4 ("sensitive": merge, deploy,
+    migration, secrets, destructive git) verification is JD running the acceptance walk
+    himself — no automated verifier is built. Phase 0 performs no real git writes and
+    reaches no R4 action, so there is no P0 implementation surface; `Receipt.verification`
+    (spec §1.5) exists now and stays `"none"` until a phase actually reaches R4.
+11. **F4 (carried from Step 4's Fable review) — Tauri daemon-supervision cleanup is
+    decided-deferred, not resolved this session.** The daemon child is killed only via
+    `WindowEvent::Destroyed` (`apps/orchestra-cockpit/src-tauri/src/lib.rs`) — no
+    `RunEvent::ExitRequested` net, no `.wait()` after `.kill()`, no orphan-detection on next
+    launch. Combined with Step 4's F3 fix (bind-before-write-token), a daemon orphaned by a
+    cockpit crash now fails the *next* launch loudly at bind instead of silently corrupting
+    a token — an improvement, not a fix. Full process-supervision robustness (an
+    `ExitRequested` net at minimum; whether to detect-and-kill an orphan on next launch is a
+    separate, bigger call) is **explicitly deferred to P1**.
+
+### Consequences for downstream
+
+- P1's build-readiness review treats D8/D9/D11's implementation as named, planned scope —
+  not something to rediscover from the spec table.
+- P1 also inherits the F4 process-supervision gap as a named item, not a silent carry-forward.
+
+### What this does NOT change
+
+- The Decisions and Consequences recorded above (D1–D7, D10) — this amendment is additive
+  only.
+- Phase 0's acceptance criteria (spec §4) — none of D8/D9/D11/F4 gate P0 completion.
