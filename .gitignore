@@ -1,9 +1,21 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-/node_modules
+# dependencies (monorepo-wide)
+node_modules
 /.pnp
 .pnp.js
+
+# rust / tauri
+/**/src-tauri/target/
+/**/src-tauri/gen/
+
+# vite build output
+/**/dist/
+
+# daemon local state (never commit the socket token or local db)
+/**/*.sqlite
+/**/*.sqlite-journal
+/**/daemon.token
 
 # testing
 /coverage
