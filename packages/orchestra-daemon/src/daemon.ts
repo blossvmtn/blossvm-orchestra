@@ -1,6 +1,7 @@
 import { DAEMON_PORT } from "./paths";
 import { generateAndWriteToken } from "./token";
-import { createFetchHandler } from "./server";
+import { createFetchHandler, type DaemonDeps } from "./server";
+import { createDb } from "./db/db";
 
 async function main() {
   // Fable review, 2026-07-18, F3: bind the port BEFORE writing the token. If
@@ -8,7 +9,7 @@ async function main() {
   // we exit — instead of overwriting a live daemon's token with one it never
   // reads, which would strand the cockpit in a silent, indefinite 401 loop
   // against the still-running orphan (see F4 — the two compound).
-  const deps = { token: "" };
+  const deps: DaemonDeps = { token: "", db: createDb() };
   const fetch = createFetchHandler(deps);
   const server = Bun.serve({
     hostname: "127.0.0.1",
