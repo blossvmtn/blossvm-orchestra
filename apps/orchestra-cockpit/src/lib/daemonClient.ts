@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { Receipt } from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
@@ -66,4 +67,52 @@ export async function dispatchFixtureWorkIntent(): Promise<FixtureDispatchRespon
 export async function getReceipt(id: string): Promise<Receipt> {
   const res = await daemonFetch(`/receipts/${id}`);
   return (await res.json()) as Receipt;
+}
+
+export type Repo = { id: string; slug: string; rootPath: string; registeredAt: string };
+
+/** D19 — native folder picker, not fuzzy path-guessing. Returns null if the user cancels. */
+export async function pickRepoFolder(): Promise<string | null> {
+  const selected = await open({ directory: true, multiple: false });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function registerRepo(rootPath: string): Promise<Repo> {
+  const res = await daemonFetch("/repos", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ rootPath }),
+  });
+  return (await res.json()) as Repo;
+}
+
+export type WorkIntentDispatchResponse = {
+  workIntentId: string;
+  taskSpecId: string;
+  worktreeId: string;
+  agentRunId: string;
+  receiptId: string;
+};
+
+export type WorkIntentTaskSpecInput = {
+  slug: string;
+  branch: string;
+  role: string;
+  allowedPaths: string[];
+  forbiddenPaths: string[];
+  acceptance: string[];
+};
+
+/** Spec §3's real dispatch — parallel to dispatchFixtureWorkIntent, real founder input. */
+export async function submitWorkIntent(input: {
+  repoSlug: string;
+  intent: string;
+  taskSpec: WorkIntentTaskSpecInput;
+}): Promise<WorkIntentDispatchResponse> {
+  const res = await daemonFetch("/work-intents", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return (await res.json()) as WorkIntentDispatchResponse;
 }
