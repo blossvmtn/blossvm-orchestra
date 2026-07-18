@@ -134,7 +134,7 @@ export const receipts = sqliteTable(
 // entity_type / event_type have no Zod counterpart in @orchestra/core (they're
 // a schema.ts-only bookkeeping concept, not a domain contract) — narrowed with
 // a literal tuple instead, still enum-enforced rather than bare `text`.
-const EVENT_ENTITY_TYPES = [
+export const EVENT_ENTITY_TYPES = [
   "work_intent",
   "task_spec",
   "agent_run",
@@ -142,7 +142,7 @@ const EVENT_ENTITY_TYPES = [
   "worktree",
   "repo",
 ] as const;
-const EVENT_TYPES = ["created", "updated"] as const;
+export const EVENT_TYPES = ["created", "updated"] as const;
 
 /**
  * D6 — append-only, write-only audit trail. NEVER read to reconstruct current
