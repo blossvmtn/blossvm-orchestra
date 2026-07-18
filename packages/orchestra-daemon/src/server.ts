@@ -1,5 +1,14 @@
 import type { OrchestraDb } from "./db/db";
-import { dispatchFixtureWorkIntent, getReceiptById } from "./pipeline";
+import {
+  dispatchFixtureWorkIntent,
+  getReceiptById,
+  registerRepo,
+  dispatchWorkIntent,
+  RepoNotRegisteredError,
+  type DispatchWorkIntentInput,
+} from "./pipeline";
+
+type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 
 /**
  * The daemon's HTTP surface. Factored out from daemon.ts so it can be exercised
@@ -48,7 +57,13 @@ function withCors(res: Response, req: Request): Response {
   return res;
 }
 
-function routeRequest(req: Request, deps: DaemonDeps): Response {
+// routeRequest is async (Phase 1 — the real /work-intents dispatch awaits real
+// git/spawn work). Plan-critique, 2026-07-18: a prior draft of this spec
+// claimed the CORS/auth wrapper stayed "unchanged" while only routeRequest
+// became async — that breaks every route, not just the new one, since
+// withCors would receive a Promise instead of a Response. createFetchHandler
+// below awaits routeRequest before passing its result to withCors.
+async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
   const url = new URL(req.url);
 
   // Every route requires the daemon's token — the one piece of hardening a
@@ -80,6 +95,53 @@ function routeRequest(req: Request, deps: DaemonDeps): Response {
     });
   }
 
+  // Phase 1 §2 — repo registration. isGitRepo validation happens inside
+  // registerRepo() itself; a non-git rootPath throws, caught below as a 400.
+  if (url.pathname === "/repos" && req.method === "POST") {
+    try {
+      const body = (await req.json()) as { rootPath?: unknown };
+      if (typeof body.rootPath !== "string" || body.rootPath.length === 0) {
+        return Response.json({ error: "rootPath is required" }, { status: 400 });
+      }
+      const repo = await registerRepo(deps.db, body.rootPath);
+      return Response.json(repo);
+    } catch (err) {
+      return Response.json({ error: err instanceof Error ? err.message : "registration failed" }, { status: 400 });
+    }
+  }
+
+  // Phase 1 §2 — the real dispatch route. Parallel to /fixture/dispatch but
+  // takes real founder input instead of fabricating it.
+  if (url.pathname === "/work-intents" && req.method === "POST") {
+    try {
+      const body = (await req.json()) as {
+        repoSlug?: unknown;
+        intent?: unknown;
+        taskSpec?: unknown;
+      };
+      if (typeof body.repoSlug !== "string" || typeof body.intent !== "string" || !body.taskSpec) {
+        return Response.json({ error: "repoSlug, intent, and taskSpec are required" }, { status: 400 });
+      }
+      const result = await dispatchWorkIntent(deps.db, {
+        repoSlug: body.repoSlug,
+        intent: body.intent,
+        taskSpec: body.taskSpec as DispatchWorkIntentTaskSpecInput,
+      });
+      return Response.json({
+        workIntentId: result.workIntent.id,
+        taskSpecId: result.taskSpec.id,
+        worktreeId: result.worktree.id,
+        agentRunId: result.agentRun.id,
+        receiptId: result.receipt.id,
+      });
+    } catch (err) {
+      if (err instanceof RepoNotRegisteredError) {
+        return Response.json({ error: err.message }, { status: 404 });
+      }
+      return Response.json({ error: err instanceof Error ? err.message : "dispatch failed" }, { status: 500 });
+    }
+  }
+
   const receiptMatch = /^\/receipts\/([^/]+)$/.exec(url.pathname);
   if (receiptMatch && req.method === "GET") {
     const id = receiptMatch[1];
@@ -94,12 +156,12 @@ function routeRequest(req: Request, deps: DaemonDeps): Response {
 }
 
 export function createFetchHandler(deps: DaemonDeps): (req: Request) => Promise<Response> {
-  return (req: Request): Promise<Response> => {
+  return async (req: Request): Promise<Response> => {
     // Preflight requests never carry the authorization header (browsers strip
     // it), so this must be answered before routeRequest's auth check, not after.
     if (req.method === "OPTIONS") {
-      return Promise.resolve(withCors(new Response(null, { status: 204 }), req));
+      return withCors(new Response(null, { status: 204 }), req);
     }
-    return Promise.resolve(withCors(routeRequest(req, deps), req));
+    return withCors(await routeRequest(req, deps), req);
   };
 }
