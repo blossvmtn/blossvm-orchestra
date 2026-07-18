@@ -123,13 +123,11 @@ re-deriving from the spec.
 
 ### Decisions
 
-12. **D14 — Claude Code dispatch uses `--bare` + explicit `--settings <json>`** to inject the
-    `PreToolUse` fence hook, since `--bare` skips hook auto-discovery from settings *files*
-    but honors explicitly-passed flags. **Unverified in the docs, named as a real risk**: the
-    `--bare`+`--settings`-injected-hook combination specifically (vs. hooks generally) isn't
-    independently confirmed; first sub-step of P1's provider build is to verify it directly.
-    Fallback: drop `--bare` + set `CLAUDE_CONFIG_DIR` to an empty directory (preserves
-    isolation without `--bare`).
+12. **D14 — superseded during build by D26 below.** Originally: Claude Code dispatch uses
+    `--bare` + explicit `--settings <json>` to inject the `PreToolUse` fence hook. Live
+    testing on JD's actual machine found both `--bare` and its named fallback
+    (`CLAUDE_CONFIG_DIR` override) break OAuth/subscription auth outright — not a hook
+    question, an auth one. See D26.
 13. **D15 — the real capability-provider seam is synchronous-after-await**, matching
     `fixtureCapabilityProvider.ts`'s object shape (not its sync signature — the real one
     returns a `Promise`). No incremental SQLite progress writes in P1; live progress is
@@ -164,14 +162,29 @@ re-deriving from the spec.
     it either), so the agent can read outside its worktree even though it can't write outside
     the fence — accepted for P1 (read-exfiltration risk is materially smaller and founder-
     authored prompts aren't adversarial input), revisit if it's ever worth its own hook.
+24. **D26 — corrects D14, live-tested on JD's machine mid-build, 2026-07-18.** The
+    `PreToolUse` hook mechanism itself works correctly under normal auth: a real dispatch
+    fired the hook, the hook received the documented stdin shape, and its `deny` decision was
+    honored (verified: the target file was never written, `permission_denials` in the result
+    event confirmed it, Claude Code's own response text confirmed the block). But both of
+    D14's isolation paths — `--bare` and the `CLAUDE_CONFIG_DIR` fallback — break OAuth
+    lookup outright on a subscription-authenticated machine (no `ANTHROPIC_API_KEY` set);
+    both failed identically ("Not logged in"). **Resolved: P1 dispatches with plain
+    `claude -p ... --settings <hook-json>`, no `--bare`, no `CLAUDE_CONFIG_DIR` override** —
+    confirmed working end to end in the same test. **Named, accepted residual**: JD's
+    personal hooks/skills/MCP servers/CLAUDE.md are active during a dispatched run, not
+    isolated from it (acceptable for P1 — JD's own machine, single-lane, D16); a real API key
+    would restore `--bare`'s isolation if this ever needs to run outside JD's personal
+    environment. Also untested: hook-resolution order if JD ever adds his own `PreToolUse`
+    hook (he has none today).
 
 ### Consequences for downstream
 
 - P2's build-readiness review treats D9 (the mutex) and `gh.ts`'s port (D23) as named,
   planned scope carried forward from here — not rediscovered from the P1 spec.
-- The unfenced-`Read` residual (D25) and the `--bare`+hook risk (D14) are the two things this
-  amendment names as open rather than resolved — neither gates P1, both should be revisited
-  explicitly rather than silently forgotten.
+- The unfenced-`Read` residual (D25) and the no-isolation-during-dispatch residual (D26) are
+  the two things this amendment names as open rather than resolved — neither gates P1, both
+  should be revisited explicitly rather than silently forgotten.
 
 ### What this does NOT change
 
