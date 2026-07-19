@@ -8,6 +8,7 @@ import { worktrees as worktreesTable } from "../db/schema";
 import { rowToWorktree } from "../db/mappers";
 import { writeEvent } from "../db/events";
 import { git, gitStdout, listWorktrees, resolveDefaultBaseBranch, type PorcelainWorktree } from "./git";
+import { withRepoLock } from "./mutex";
 
 /**
  * create/repair/attach/reconcile/remove algorithm ported from
@@ -189,54 +190,62 @@ export async function createWorktree(db: OrchestraDb, input: CreateWorktreeInput
   const baseBranch = await resolveDefaultBaseBranch(input.repoRoot);
   const anchorSha = await gitStdout(input.repoRoot, ["rev-parse", "--verify", baseBranch]);
 
-  const disk = await listWorktrees(input.repoRoot);
-  let existingOnDisk = await findDiskWorktree(disk, wtPathRaw);
-  const dirExists = await pathExists(wtPathRaw);
+  // Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md §2/§3
+  // step 5, D28) — every git-write from here on shares the per-repo lock
+  // with removeWorktree and stackedAction.ts's commit/push/PR writes, since
+  // all of them touch the same shared `.git` object store (D9). Validation,
+  // mkdir, and the base-branch/anchor-SHA lookup above are not git writes —
+  // they stay outside the lock.
+  return withRepoLock(input.repoRoot, async () => {
+    const disk = await listWorktrees(input.repoRoot);
+    let existingOnDisk = await findDiskWorktree(disk, wtPathRaw);
+    const dirExists = await pathExists(wtPathRaw);
 
-  // Fail-soft (T3 posture): if the worktree dir already exists, attach/repair
-  // rather than error — useful for daemon-restart/retry scenarios.
-  if (existingOnDisk || dirExists) {
-    if (!existingOnDisk && dirExists) {
-      await git(input.repoRoot, ["worktree", "prune"]).catch(() => undefined);
-      const refreshed = await listWorktrees(input.repoRoot);
-      existingOnDisk = await findDiskWorktree(refreshed, wtPathRaw);
-      if (!existingOnDisk) {
-        throw new Error(
-          `Path exists but is not a git worktree: ${wtPathRaw}. Remove it manually or choose another slug.`,
-        );
+    // Fail-soft (T3 posture): if the worktree dir already exists, attach/repair
+    // rather than error — useful for daemon-restart/retry scenarios.
+    if (existingOnDisk || dirExists) {
+      if (!existingOnDisk && dirExists) {
+        await git(input.repoRoot, ["worktree", "prune"]).catch(() => undefined);
+        const refreshed = await listWorktrees(input.repoRoot);
+        existingOnDisk = await findDiskWorktree(refreshed, wtPathRaw);
+        if (!existingOnDisk) {
+          throw new Error(
+            `Path exists but is not a git worktree: ${wtPathRaw}. Remove it manually or choose another slug.`,
+          );
+        }
+      }
+
+      const wtPath = existingOnDisk
+        ? await fs.realpath(existingOnDisk.path).catch(() => existingOnDisk?.path ?? wtPathRaw)
+        : wtPathRaw;
+
+      return upsertWorktreeRow(db, {
+        taskSpecId: input.taskSpecId,
+        branch: existingOnDisk?.branch ?? input.branch,
+        path: wtPath,
+        anchorSha,
+      });
+    }
+
+    // Fresh create: branch off base. If the branch already exists, attach that
+    // ref instead of crashing.
+    try {
+      await git(input.repoRoot, ["worktree", "add", "-b", input.branch, wtPathRaw, baseBranch]);
+    } catch (err) {
+      const msg = [
+        err instanceof Error ? err.message : String(err),
+        err && typeof err === "object" && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "",
+      ].join("\n");
+      if (/already (exists|checked out)/i.test(msg) || /branch.*exists/i.test(msg)) {
+        await git(input.repoRoot, ["worktree", "add", wtPathRaw, input.branch]);
+      } else {
+        throw err;
       }
     }
 
-    const wtPath = existingOnDisk
-      ? await fs.realpath(existingOnDisk.path).catch(() => existingOnDisk?.path ?? wtPathRaw)
-      : wtPathRaw;
-
-    return upsertWorktreeRow(db, {
-      taskSpecId: input.taskSpecId,
-      branch: existingOnDisk?.branch ?? input.branch,
-      path: wtPath,
-      anchorSha,
-    });
-  }
-
-  // Fresh create: branch off base. If the branch already exists, attach that
-  // ref instead of crashing.
-  try {
-    await git(input.repoRoot, ["worktree", "add", "-b", input.branch, wtPathRaw, baseBranch]);
-  } catch (err) {
-    const msg = [
-      err instanceof Error ? err.message : String(err),
-      err && typeof err === "object" && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "",
-    ].join("\n");
-    if (/already (exists|checked out)/i.test(msg) || /branch.*exists/i.test(msg)) {
-      await git(input.repoRoot, ["worktree", "add", wtPathRaw, input.branch]);
-    } else {
-      throw err;
-    }
-  }
-
-  const wtPath = await fs.realpath(wtPathRaw);
-  return upsertWorktreeRow(db, { taskSpecId: input.taskSpecId, branch: input.branch, path: wtPath, anchorSha });
+    const wtPath = await fs.realpath(wtPathRaw);
+    return upsertWorktreeRow(db, { taskSpecId: input.taskSpecId, branch: input.branch, path: wtPath, anchorSha });
+  });
 }
 
 /**
@@ -278,54 +287,64 @@ export async function removeWorktree(
     throw new Error(`Worktree not found: ${worktreeId}`);
   }
 
-  const disk = await listWorktrees(repoRoot);
-  const onDisk = await findDiskWorktree(disk, row.path);
+  // Phase 2 (spec §2/§3 step 5, D28) — see createWorktree's matching comment.
+  // Named, accepted residual (plan-critique re-judge round 2, 2026-07-19):
+  // the row lookup above runs BEFORE the lock — two concurrent removeWorktree
+  // calls for the SAME worktreeId can both pass the not-found check first,
+  // so the second executes against an already-deleted row (a harmless no-op
+  // delete + a misleading duplicate event). Accepted for P2's single-founder
+  // usage; D28 protects different writes racing, not double-invocation of
+  // the same one.
+  return withRepoLock(repoRoot, async () => {
+    const disk = await listWorktrees(repoRoot);
+    const onDisk = await findDiskWorktree(disk, row.path);
 
-  if (onDisk) {
-    try {
-      await git(repoRoot, ["worktree", "remove", "--force", row.path], { timeoutMs: 15_000 });
-    } catch (err) {
-      // Second independent review round, 2026-07-19 — MAJOR: this used to
-      // swallow EVERY removal failure (lock, permission, timeout, wrong
-      // repo) as "the directory must already be gone," then delete the DB
-      // row and report success regardless — persistence claiming a
-      // physical lane is gone when it might still be sitting on disk.
-      // Prune first (cleans up if it genuinely IS gone), then verify —
-      // only a directory that's actually absent gets treated as success.
+    if (onDisk) {
+      try {
+        await git(repoRoot, ["worktree", "remove", "--force", row.path], { timeoutMs: 15_000 });
+      } catch (err) {
+        // Second independent review round, 2026-07-19 — MAJOR: this used to
+        // swallow EVERY removal failure (lock, permission, timeout, wrong
+        // repo) as "the directory must already be gone," then delete the DB
+        // row and report success regardless — persistence claiming a
+        // physical lane is gone when it might still be sitting on disk.
+        // Prune first (cleans up if it genuinely IS gone), then verify —
+        // only a directory that's actually absent gets treated as success.
+        await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
+        if (await pathExists(row.path)) {
+          throw new Error(
+            `Failed to remove worktree at ${row.path}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    } else if (await pathExists(row.path)) {
+      await fs.rm(row.path, { recursive: true, force: true });
       await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
-      if (await pathExists(row.path)) {
-        throw new Error(
-          `Failed to remove worktree at ${row.path}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    } else {
+      await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
+    }
+
+    if (mode === "delete-branch") {
+      await git(repoRoot, ["branch", "-D", row.branch]).catch(() => undefined);
+      // Same principle as the worktree removal above: a `-D` failure only
+      // matters if the branch is actually still there afterward (e.g. still
+      // checked out elsewhere) — don't fail on a branch that was already gone.
+      const stillExists = await gitStdout(repoRoot, ["branch", "--list", row.branch]).catch(() => "");
+      if (stillExists.trim() !== "") {
+        throw new Error(`Failed to delete branch ${row.branch} after removing its worktree.`);
       }
     }
-  } else if (await pathExists(row.path)) {
-    await fs.rm(row.path, { recursive: true, force: true });
-    await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
-  } else {
-    await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
-  }
 
-  if (mode === "delete-branch") {
-    await git(repoRoot, ["branch", "-D", row.branch]).catch(() => undefined);
-    // Same principle as the worktree removal above: a `-D` failure only
-    // matters if the branch is actually still there afterward (e.g. still
-    // checked out elsewhere) — don't fail on a branch that was already gone.
-    const stillExists = await gitStdout(repoRoot, ["branch", "--list", row.branch]).catch(() => "");
-    if (stillExists.trim() !== "") {
-      throw new Error(`Failed to delete branch ${row.branch} after removing its worktree.`);
-    }
-  }
-
-  // PR #2 review, 2026-07-18 — should-fix: D17 says an event's payload is
-  // "the already-Schema.parse()-validated domain object itself" — a
-  // synthetic {id, removed, mode} object isn't that. Use the real row (read
-  // before delete) instead, same shape every other worktree event uses.
-  // Second review round, 2026-07-19 — should-fix: the row delete and its
-  // event are now one transaction, same D6 reasoning as upsertWorktreeRow.
-  db.transaction((tx) => {
-    tx.delete(worktreesTable).where(eq(worktreesTable.id, worktreeId)).run();
-    writeEvent(tx, "worktree", worktreeId, "updated", rowToWorktree(row));
+    // PR #2 review, 2026-07-18 — should-fix: D17 says an event's payload is
+    // "the already-Schema.parse()-validated domain object itself" — a
+    // synthetic {id, removed, mode} object isn't that. Use the real row (read
+    // before delete) instead, same shape every other worktree event uses.
+    // Second review round, 2026-07-19 — should-fix: the row delete and its
+    // event are now one transaction, same D6 reasoning as upsertWorktreeRow.
+    db.transaction((tx) => {
+      tx.delete(worktreesTable).where(eq(worktreesTable.id, worktreeId)).run();
+      writeEvent(tx, "worktree", worktreeId, "updated", rowToWorktree(row));
+    });
+    return { ok: true };
   });
-  return { ok: true };
 }

@@ -34,4 +34,28 @@ describe("WorktreeSchema", () => {
     const result = WorktreeSchema.safeParse(withoutLink);
     expect(result.success).toBe(false);
   });
+
+  test("accepts a valid worktree with both prUrl and prNumber absent", () => {
+    expect(WorktreeSchema.safeParse(valid).success).toBe(true);
+  });
+
+  test("accepts a valid worktree with both prUrl and prNumber set", () => {
+    const result = WorktreeSchema.safeParse({
+      ...valid,
+      status: "pr_open",
+      prUrl: "https://github.com/blossvmtn/blossvm-orchestra/pull/1",
+      prNumber: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects a non-positive prNumber", () => {
+    const result = WorktreeSchema.safeParse({ ...valid, prNumber: 0 });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects a non-URL prUrl", () => {
+    const result = WorktreeSchema.safeParse({ ...valid, prUrl: "not-a-url" });
+    expect(result.success).toBe(false);
+  });
 });

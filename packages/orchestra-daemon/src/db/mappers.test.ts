@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { WorkIntentSchema, TaskSpecSchema, AgentRunSchema, ReceiptSchema } from "@orchestra/core";
+import { WorkIntentSchema, TaskSpecSchema, AgentRunSchema, ReceiptSchema, WorktreeSchema } from "@orchestra/core";
 import { createDb } from "./db";
-import { workIntents, taskSpecs, agentRuns, receipts, repos } from "./schema";
-import { rowToWorkIntent, rowToTaskSpec, rowToAgentRun, rowToReceipt } from "./mappers";
+import { workIntents, taskSpecs, agentRuns, receipts, repos, worktrees } from "./schema";
+import { rowToWorkIntent, rowToTaskSpec, rowToAgentRun, rowToReceipt, rowToWorktree } from "./mappers";
 
 function freshDb() {
   return createDb(":memory:");
@@ -177,5 +178,63 @@ describe("row -> domain mappers (F2: Drizzle null vs. Zod undefined)", () => {
     expect(ReceiptSchema.safeParse(receipt).success).toBe(true);
     expect(agentRun.claudeSessionId).toBeUndefined();
     expect(receipt.prUrl).toBeUndefined();
+  });
+
+  // Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md §3
+  // step 7, D30) — rowToWorktree had no dedicated coverage before this;
+  // worktrees.test.ts exercises it only indirectly through createWorktree.
+  test("rowToWorktree converts null prUrl/prNumber columns to undefined and parses cleanly", () => {
+    const db = freshDb();
+    seedWorkIntent(db, WI_1);
+    seedTaskSpec(db, TS_1, WI_1);
+    const worktreeId = randomUUID();
+    db.insert(worktrees)
+      .values({
+        id: worktreeId,
+        taskSpecId: TS_1,
+        path: "/repo/.orchestra/worktrees/security-sanitize",
+        branch: "orch/security-sanitize",
+        anchorSha: "abcdef0123456789",
+        status: "active",
+        createdAt: "2026-07-18T16:00:00.000Z",
+        // prUrl, prNumber left unset -> stored as SQL NULL
+      })
+      .run();
+
+    const raw = db.select().from(worktrees).where(eq(worktrees.id, worktreeId)).get();
+    if (!raw) throw new Error("row not found");
+    const worktree = rowToWorktree(raw);
+
+    expect(worktree.prUrl).toBeUndefined();
+    expect(worktree.prNumber).toBeUndefined();
+    expect(WorktreeSchema.safeParse(worktree).success).toBe(true);
+  });
+
+  test("rowToWorktree preserves populated prUrl/prNumber columns", () => {
+    const db = freshDb();
+    seedWorkIntent(db, WI_1);
+    seedTaskSpec(db, TS_1, WI_1);
+    const worktreeId = randomUUID();
+    db.insert(worktrees)
+      .values({
+        id: worktreeId,
+        taskSpecId: TS_1,
+        path: "/repo/.orchestra/worktrees/security-sanitize",
+        branch: "orch/security-sanitize",
+        anchorSha: "abcdef0123456789",
+        status: "pr_open",
+        createdAt: "2026-07-18T16:00:00.000Z",
+        prUrl: "https://github.com/blossvmtn/blossvm-orchestra/pull/1",
+        prNumber: 1,
+      })
+      .run();
+
+    const raw = db.select().from(worktrees).where(eq(worktrees.id, worktreeId)).get();
+    if (!raw) throw new Error("row not found");
+    const worktree = rowToWorktree(raw);
+
+    expect(worktree.prUrl).toBe("https://github.com/blossvmtn/blossvm-orchestra/pull/1");
+    expect(worktree.prNumber).toBe(1);
+    expect(WorktreeSchema.safeParse(worktree).success).toBe(true);
   });
 });
