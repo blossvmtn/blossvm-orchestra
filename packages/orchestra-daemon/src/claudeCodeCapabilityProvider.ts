@@ -5,6 +5,32 @@ import { consumeClaudeCodeStream } from "./claudeCodeStream";
 
 const HOOK_PATH = path.join(import.meta.dir, "fence", "hook.ts");
 
+// ponytail: a flat timeout, not per-task budgeting off riskTier/acceptance
+// count — ceiling is "long enough for a real single-shot coding task,"
+// upgrade path is per-TaskSpec timeouts once P1's single-lane assumption
+// stops holding (multiple concurrent dispatches, longer-running work).
+const PROVIDER_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** Drains a stream to a string without parsing it — used for proc.stderr,
+ * which must be read concurrently with stdout (see runClaudeCodeCapabilityProvider's
+ * doc comment): an unread pipe fills its OS buffer (~64KB) and blocks the
+ * child's next write() to it, which can stall the whole process. */
+export async function drainStream(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
 /**
  * The real capability provider (Phase 1 spec §3 step 9) — parallel to
  * fixtureCapabilityProvider.ts, but actually spawns Claude Code and drives
@@ -68,8 +94,46 @@ export async function runClaudeCodeCapabilityProvider(
     },
   );
 
-  const streamResult = await consumeClaudeCodeStream(proc.stdout);
-  await proc.exited;
+  // Second independent review round, 2026-07-19 — MAJOR: this used to await
+  // consumeClaudeCodeStream(proc.stdout) alone, with stderr piped but never
+  // read (a deadlock risk — see drainStream's doc comment), no timeout (a
+  // hung `claude` process hung this dispatch, and the HTTP request behind
+  // it, forever), and no exit-code check (a nonzero exit that still managed
+  // to emit a well-formed terminal `result` event before dying would have
+  // been reported as a normal success). All three fixed together: stdout
+  // and stderr drain concurrently, a timeout kills the process and fails
+  // loud instead of hanging, and a nonzero exit always throws regardless of
+  // what the stream looked like.
+  let timedOut = false;
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, PROVIDER_TIMEOUT_MS);
+
+  let streamResult: Awaited<ReturnType<typeof consumeClaudeCodeStream>>;
+  let stderrText: string;
+  try {
+    [streamResult, stderrText] = await Promise.all([consumeClaudeCodeStream(proc.stdout), drainStream(proc.stderr)]);
+    await proc.exited;
+  } catch (err) {
+    proc.kill();
+    await proc.exited.catch(() => undefined);
+    clearTimeout(timeoutHandle);
+    if (timedOut) {
+      throw new Error(`Claude Code run timed out after ${PROVIDER_TIMEOUT_MS}ms and was killed.`);
+    }
+    throw err;
+  }
+  clearTimeout(timeoutHandle);
+
+  if (timedOut) {
+    throw new Error(`Claude Code run timed out after ${PROVIDER_TIMEOUT_MS}ms and was killed.`);
+  }
+  if (proc.exitCode !== 0) {
+    throw new Error(
+      `Claude Code exited with code ${String(proc.exitCode)}${stderrText ? `: ${stderrText.slice(0, 2000)}` : ""}`,
+    );
+  }
 
   const endedAt = new Date().toISOString();
 

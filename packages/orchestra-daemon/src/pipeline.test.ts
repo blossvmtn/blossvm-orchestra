@@ -1,6 +1,7 @@
 import { describe, expect, test, afterEach } from "bun:test";
 import { eq } from "drizzle-orm";
-import { mkdtemp, rm } from "node:fs/promises";
+import fs from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDb } from "./db/db";
@@ -83,11 +84,14 @@ describe("registerRepo / dispatchWorkIntent (Phase 1)", () => {
     const db = freshDb();
     const repo = await registerRepo(db, repoRoot);
 
-    expect(repo.rootPath).toBe(repoRoot);
+    // .toEndWith, not .toBe: registerRepo now canonicalizes via realpath
+    // (second review round fix), and macOS resolves /tmp -> /private/tmp —
+    // same pattern as git.test.ts's existing realpath-vs-symlink assertion.
+    expect(repo.rootPath).toEndWith(fs.realpathSync(repoRoot));
     expect(repo.slug).toBe(path.basename(repoRoot));
 
     const row = db.select().from(repos).where(eq(repos.slug, repo.slug)).get();
-    expect(row?.rootPath).toBe(repoRoot);
+    expect(row?.rootPath).toBe(repo.rootPath);
 
     const eventRows = db.select().from(events).where(eq(events.entityId, repo.id)).all();
     expect(eventRows).toHaveLength(1);
@@ -99,6 +103,90 @@ describe("registerRepo / dispatchWorkIntent (Phase 1)", () => {
     const db = freshDb();
 
     await expect(registerRepo(db, repoRoot)).rejects.toThrow(/Not a git repository/);
+  });
+
+  // Second independent review round, 2026-07-19 — three MAJOR gaps.
+  describe("registerRepo — canonicalization, idempotency, and slug collisions", () => {
+    test("selecting a subdirectory of a repo still registers the repo's real root, not the subdirectory", async () => {
+      repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-register-subdir-"));
+      await git(repoRoot, ["init", "-b", "main"]);
+      const subdir = path.join(repoRoot, "packages", "core");
+      await mkdir(subdir, { recursive: true });
+
+      const db = freshDb();
+      const repo = await registerRepo(db, subdir);
+
+      expect(repo.rootPath).toEndWith(fs.realpathSync(repoRoot));
+      expect(repo.slug).toBe(path.basename(repoRoot));
+    });
+
+    test("re-registering the same repo is a no-op, not a unique-constraint crash", async () => {
+      repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-register-idempotent-"));
+      await git(repoRoot, ["init", "-b", "main"]);
+
+      const db = freshDb();
+      const first = await registerRepo(db, repoRoot);
+      const second = await registerRepo(db, repoRoot);
+
+      expect(second.id).toBe(first.id);
+      const rows = db.select().from(repos).where(eq(repos.slug, first.slug)).all();
+      expect(rows).toHaveLength(1);
+    });
+
+    test("re-registering overwrites a stale row whose stored rootPath is no longer a live repo (the migration-0004 backfill placeholder case)", async () => {
+      repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-register-stale-"));
+      await git(repoRoot, ["init", "-b", "main"]);
+      const db = freshDb();
+      const slug = path.basename(repoRoot);
+
+      // Simulates migration 0004's backfill: a repos row whose slug matches
+      // the real repo's basename but whose root_path is a placeholder that
+      // was never (and never will be) a live repo. A real UUID id, matching
+      // what the migration's SQL actually generates.
+      const placeholderId = "d290f1ee-6c54-4b01-90e6-d701748f9999";
+      db.insert(repos)
+        .values({
+          id: placeholderId,
+          slug,
+          rootPath: "(unknown — backfilled by migration 0004, re-register via POST /repos)",
+          registeredAt: "1970-01-01T00:00:00.000Z",
+        })
+        .run();
+
+      const repo = await registerRepo(db, repoRoot);
+
+      expect(repo.id).toBe(placeholderId);
+      expect(repo.rootPath).toEndWith(fs.realpathSync(repoRoot));
+      const rows = db.select().from(repos).where(eq(repos.slug, slug)).all();
+      expect(rows).toHaveLength(1);
+    });
+
+    test("two different, still-live repos sharing a basename get distinct slugs instead of one clobbering the other", async () => {
+      const parentA = await mkdtemp(path.join(tmpdir(), "orchestra-register-collide-a-"));
+      const parentB = await mkdtemp(path.join(tmpdir(), "orchestra-register-collide-b-"));
+      const repoA = path.join(parentA, "shared-name");
+      const repoB = path.join(parentB, "shared-name");
+      await mkdir(repoA, { recursive: true });
+      await mkdir(repoB, { recursive: true });
+      await git(repoA, ["init", "-b", "main"]);
+      await git(repoB, ["init", "-b", "main"]);
+
+      const db = freshDb();
+      try {
+        const first = await registerRepo(db, repoA);
+        const second = await registerRepo(db, repoB);
+
+        expect(first.slug).toBe("shared-name");
+        expect(second.slug).not.toBe("shared-name");
+        expect(second.rootPath).toEndWith(fs.realpathSync(repoB));
+
+        const rows = db.select().from(repos).all();
+        expect(rows).toHaveLength(2);
+      } finally {
+        await rm(parentA, { recursive: true, force: true });
+        await rm(parentB, { recursive: true, force: true });
+      }
+    });
   });
 
   test("dispatchWorkIntent rejects an unregistered repoSlug before spawning anything", async () => {

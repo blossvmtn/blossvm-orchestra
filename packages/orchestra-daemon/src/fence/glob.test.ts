@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { pathAllowed } from "./glob";
 
 const WORKTREE_ROOT = "/repo/.orchestra/worktrees/security-sanitize";
@@ -76,6 +79,47 @@ describe("pathAllowed", () => {
     test("still allows a real path inside the tree under a permissive allowedPaths", () => {
       // The fix must not be so aggressive it breaks the legitimate "**" case.
       expect(pathAllowed(`${WORKTREE_ROOT}/src/anything.ts`, WORKTREE_ROOT, ["**"], [])).toBe(true);
+    });
+  });
+
+  // Second independent review round, 2026-07-19 — CRITICAL: the lexical
+  // containment fix above didn't resolve symlinks. A git-tracked symlink
+  // whose literal path sits inside the worktree but whose TARGET resolves
+  // outside it passed the old check while actually reading/writing through
+  // the escaped target. Needs a real filesystem (mkdtemp + a real symlink) —
+  // this can't be expressed with the fixture-string paths above.
+  describe("containment — a symlink inside the worktree pointing outside it is denied", () => {
+    let root: string;
+    let outside: string;
+
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    });
+
+    test("denies a write through a symlink whose target escapes the worktree", async () => {
+      root = await mkdtemp(path.join(tmpdir(), "orchestra-fence-root-"));
+      outside = await mkdtemp(path.join(tmpdir(), "orchestra-fence-outside-"));
+      await writeFile(path.join(outside, "secret.ts"), "secret\n");
+      await symlink(outside, path.join(root, "escape-link"));
+
+      const linkedPath = path.join(root, "escape-link", "secret.ts");
+      expect(pathAllowed(linkedPath, root, ["**"], [])).toBe(false);
+    });
+
+    test("still allows a real path inside the tree once symlinks are resolved", async () => {
+      root = await mkdtemp(path.join(tmpdir(), "orchestra-fence-root-"));
+      outside = await mkdtemp(path.join(tmpdir(), "orchestra-fence-outside-"));
+      await writeFile(path.join(root, "real.ts"), "real\n");
+
+      expect(pathAllowed(path.join(root, "real.ts"), root, ["**"], [])).toBe(true);
+    });
+
+    test("still allows a not-yet-created file inside the tree (nearest-existing-ancestor resolution)", async () => {
+      root = await mkdtemp(path.join(tmpdir(), "orchestra-fence-root-"));
+      outside = await mkdtemp(path.join(tmpdir(), "orchestra-fence-outside-"));
+
+      expect(pathAllowed(path.join(root, "src", "new-file.ts"), root, ["**"], [])).toBe(true);
     });
   });
 });

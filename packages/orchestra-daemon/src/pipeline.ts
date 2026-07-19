@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import {
@@ -20,7 +21,7 @@ import { fixtureRepo, fixtureWorkIntent, fixtureTaskSpec } from "./fixtures";
 import { runFixtureCapabilityProvider } from "./fixtureCapabilityProvider";
 import { runClaudeCodeCapabilityProvider } from "./claudeCodeCapabilityProvider";
 import { createWorktree } from "./git/worktrees";
-import { isGitRepo } from "./git/git";
+import { isGitRepo, gitStdout } from "./git/git";
 
 export type FixtureDispatchResult = {
   workIntent: WorkIntent;
@@ -80,15 +81,62 @@ export class RepoNotRegisteredError extends Error {
   }
 }
 
+/**
+ * Second independent review round, 2026-07-19 — MAJOR, fixed same-day, three
+ * compounding gaps:
+ *
+ * 1. `isGitRepo` is true for any directory inside a repo, not just its root
+ *    — selecting a subdirectory in the folder picker used to store THAT
+ *    subdirectory as rootPath, so every worktree/git call downstream ran
+ *    relative to the wrong directory. `rev-parse --show-toplevel` finds the
+ *    real root; `realpathSync` resolves any symlink the selection passed
+ *    through, so two different-looking selections of the same physical repo
+ *    canonicalize to one identity.
+ * 2. Re-registering an already-registered repo threw on `repos.slug`'s
+ *    unique index instead of being a no-op — a founder re-running the
+ *    folder picker on a repo they already added shouldn't crash the daemon.
+ * 3. Migration 0004 backfills a placeholder `repos` row per orphaned
+ *    `work_intents.repo_slug`, with a comment promising the owner can
+ *    "re-register via POST /repos" — but a plain insert here made that
+ *    re-registration fail on the same unique index the placeholder already
+ *    occupies. Detected via `!isGitRepo(existing.rootPath)`: the
+ *    placeholder path (and any repo since moved/deleted) is never a live
+ *    repo, so it's safe to overwrite in place. A slug held by a genuinely
+ *    different, still-live repo (two real project folders sharing a
+ *    basename) mints a collision-safe slug instead, rather than silently
+ *    repointing an active registration to a different codebase.
+ */
 export async function registerRepo(db: OrchestraDb, rootPath: string): Promise<Repo> {
   if (!(await isGitRepo(rootPath))) {
     throw new Error(`Not a git repository: ${rootPath}`);
   }
 
+  const toplevel = await gitStdout(rootPath, ["rev-parse", "--show-toplevel"]);
+  const canonicalRoot = fs.realpathSync(toplevel);
+  const slug = path.basename(canonicalRoot);
+
+  const existing = db.select().from(repos).where(eq(repos.slug, slug)).get();
+
+  if (existing && existing.rootPath === canonicalRoot) {
+    return rowToRepo(existing);
+  }
+
+  if (existing && !(await isGitRepo(existing.rootPath))) {
+    const updated = RepoSchema.parse({
+      id: existing.id,
+      slug,
+      rootPath: canonicalRoot,
+      registeredAt: new Date().toISOString(),
+    });
+    db.update(repos).set(updated).where(eq(repos.id, existing.id)).run();
+    writeEvent(db, "repo", updated.id, "updated", updated);
+    return updated;
+  }
+
   const repo = RepoSchema.parse({
     id: randomUUID(),
-    slug: path.basename(rootPath),
-    rootPath,
+    slug: existing ? `${slug}-${randomUUID().slice(0, 8)}` : slug,
+    rootPath: canonicalRoot,
     registeredAt: new Date().toISOString(),
   });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -148,6 +148,23 @@ describe("createWorktree", () => {
     ).rejects.toThrow(/already belongs to a different TaskSpec/);
   });
 
+  test("rejects reusing a TaskSpec's id with a different slug BEFORE creating a second physical worktree (PR #2 round 2 review)", async () => {
+    const db = freshDb();
+    const taskSpecId = seedTaskSpec(db);
+
+    const first = await createWorktree(db, { repoRoot, taskSpecId, slug: "lane-first", branch: "orch/lane-first" });
+
+    await expect(
+      createWorktree(db, { repoRoot, taskSpecId, slug: "lane-second", branch: "orch/lane-second" }),
+    ).rejects.toThrow(/already has a worktree/);
+
+    // The original physical worktree must still be the one on disk and in
+    // the DB — not silently orphaned by a second `git worktree add`.
+    const disk = await git(repoRoot, ["worktree", "list", "--porcelain"]);
+    expect(disk.stdout).toContain(first.path);
+    expect(disk.stdout).not.toContain("lane-second");
+  });
+
   test("falls back to attaching an existing branch when 'worktree add -b' fails", async () => {
     const db = freshDb();
     const taskSpecId = seedTaskSpec(db);
@@ -209,5 +226,40 @@ describe("removeWorktree", () => {
 
     const branches = await git(repoRoot, ["branch", "--list", "orch/lane-6"]);
     expect(branches.stdout.trim()).toBe("");
+  });
+
+  // Second independent review round, 2026-07-19 — MAJOR: a genuine removal
+  // failure (permission/lock/timeout — simulated here via chmod 000, which
+  // makes `.git` inside the worktree unreadable so `git worktree remove`
+  // fails validation) used to be swallowed as "must already be gone," and
+  // the DB row got deleted + {ok: true} returned anyway. This asserts the
+  // opposite: the error propagates and the row survives, since the physical
+  // worktree is verifiably still on disk.
+  test("propagates a genuine removal failure instead of reporting false success", async () => {
+    const db = freshDb();
+    const taskSpecId = seedTaskSpec(db);
+    const worktree = await createWorktree(db, { repoRoot, taskSpecId, slug: "lane-7", branch: "orch/lane-7" });
+
+    await Bun.$`chmod 000 ${worktree.path}`.quiet();
+    try {
+      await expect(removeWorktree(db, repoRoot, worktree.id, "keep-branch")).rejects.toThrow(
+        /Failed to remove worktree/,
+      );
+
+      // git worktree prune legitimately unregisters a broken entry from
+      // git's OWN bookkeeping even though nothing was actually deleted from
+      // disk — checking git's worktree list would prove the wrong thing.
+      // The physical directory (still there, still chmod 000'd, contents
+      // never deleted) is the real ground truth this fix cares about.
+      await expect(access(worktree.path)).resolves.toBeNull();
+
+      // The DB row must survive too — persistence must not claim the
+      // physical lane is gone when it verifiably isn't.
+      await Bun.$`chmod 755 ${worktree.path}`.quiet();
+      expect(await reconcileWorktree(db, worktree.id)).toBeDefined();
+    } finally {
+      // Restore permissions so afterEach's rm(repoRoot) can actually clean up.
+      await Bun.$`chmod 755 ${worktree.path}`.quiet();
+    }
   });
 });

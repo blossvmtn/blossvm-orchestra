@@ -101,12 +101,24 @@ function upsertWorktreeRow(
     // overwrite it with whatever the base branch tip resolves to *today*,
     // or every daemon-restart-triggered repair silently drifts the recorded
     // creation point forward. Only branch/path/status/lastSyncAt update here.
-    db.update(worktreesTable)
-      .set({ branch: opts.branch, path: opts.path, status: "active", lastSyncAt: now })
-      .where(eq(worktreesTable.id, existingRow.id))
-      .run();
-    const updated = rowToWorktree({ ...existingRow, branch: opts.branch, path: opts.path, status: "active", lastSyncAt: now });
-    writeEvent(db, "worktree", updated.id, "updated", updated);
+    const updated = rowToWorktree({
+      ...existingRow,
+      branch: opts.branch,
+      path: opts.path,
+      status: "active",
+      lastSyncAt: now,
+    });
+    // Second independent review round, 2026-07-19 — should-fix: the row
+    // update and its event used to be two separate statements — a crash
+    // between them left the row changed with no event recording it,
+    // violating D6's one-event-per-state-change invariant. One transaction.
+    db.transaction((tx) => {
+      tx.update(worktreesTable)
+        .set({ branch: opts.branch, path: opts.path, status: "active", lastSyncAt: now })
+        .where(eq(worktreesTable.id, existingRow.id))
+        .run();
+      writeEvent(tx, "worktree", updated.id, "updated", updated);
+    });
     return updated;
   }
 
@@ -132,8 +144,10 @@ function upsertWorktreeRow(
     status: "active",
     createdAt: now,
   };
-  db.insert(worktreesTable).values(worktree).run();
-  writeEvent(db, "worktree", worktree.id, "created", worktree);
+  db.transaction((tx) => {
+    tx.insert(worktreesTable).values(worktree).run();
+    writeEvent(tx, "worktree", worktree.id, "created", worktree);
+  });
   return worktree;
 }
 
@@ -149,6 +163,27 @@ export async function createWorktree(db: OrchestraDb, input: CreateWorktreeInput
   assertBranch(input.branch);
 
   const wtPathRaw = worktreePath(input.repoRoot, input.slug);
+
+  // Second independent review round, 2026-07-19 — MAJOR, preflighted before
+  // any filesystem/git mutation below: without this, a call reusing
+  // taskSpecId with a different slug created a brand-new physical worktree
+  // at the new path, then upsertWorktreeRow (keyed only on taskSpecId)
+  // silently rewrote the row to point at it — orphaning the FIRST worktree
+  // on disk with no DB record left pointing to it. D20 says Worktree is 1:1
+  // with TaskSpec; the physical lane a TaskSpec was created against doesn't
+  // move underneath it — call removeWorktree first if it genuinely must.
+  const existingRowForTaskSpec = db
+    .select()
+    .from(worktreesTable)
+    .where(eq(worktreesTable.taskSpecId, input.taskSpecId))
+    .get();
+  if (existingRowForTaskSpec && !(await samePathAsync(existingRowForTaskSpec.path, wtPathRaw))) {
+    throw new Error(
+      `TaskSpec ${input.taskSpecId} already has a worktree at ${existingRowForTaskSpec.path} — ` +
+        `remove it before creating one at a different path (${wtPathRaw}).`,
+    );
+  }
+
   await fs.mkdir(worktreesRoot(input.repoRoot), { recursive: true });
 
   const baseBranch = await resolveDefaultBaseBranch(input.repoRoot);
@@ -249,9 +284,20 @@ export async function removeWorktree(
   if (onDisk) {
     try {
       await git(repoRoot, ["worktree", "remove", "--force", row.path], { timeoutMs: 15_000 });
-    } catch {
-      // Directory may already be gone — prune and continue.
+    } catch (err) {
+      // Second independent review round, 2026-07-19 — MAJOR: this used to
+      // swallow EVERY removal failure (lock, permission, timeout, wrong
+      // repo) as "the directory must already be gone," then delete the DB
+      // row and report success regardless — persistence claiming a
+      // physical lane is gone when it might still be sitting on disk.
+      // Prune first (cleans up if it genuinely IS gone), then verify —
+      // only a directory that's actually absent gets treated as success.
       await git(repoRoot, ["worktree", "prune"]).catch(() => undefined);
+      if (await pathExists(row.path)) {
+        throw new Error(
+          `Failed to remove worktree at ${row.path}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   } else if (await pathExists(row.path)) {
     await fs.rm(row.path, { recursive: true, force: true });
@@ -262,13 +308,24 @@ export async function removeWorktree(
 
   if (mode === "delete-branch") {
     await git(repoRoot, ["branch", "-D", row.branch]).catch(() => undefined);
+    // Same principle as the worktree removal above: a `-D` failure only
+    // matters if the branch is actually still there afterward (e.g. still
+    // checked out elsewhere) — don't fail on a branch that was already gone.
+    const stillExists = await gitStdout(repoRoot, ["branch", "--list", row.branch]).catch(() => "");
+    if (stillExists.trim() !== "") {
+      throw new Error(`Failed to delete branch ${row.branch} after removing its worktree.`);
+    }
   }
 
-  db.delete(worktreesTable).where(eq(worktreesTable.id, worktreeId)).run();
   // PR #2 review, 2026-07-18 — should-fix: D17 says an event's payload is
   // "the already-Schema.parse()-validated domain object itself" — a
   // synthetic {id, removed, mode} object isn't that. Use the real row (read
   // before delete) instead, same shape every other worktree event uses.
-  writeEvent(db, "worktree", worktreeId, "updated", rowToWorktree(row));
+  // Second review round, 2026-07-19 — should-fix: the row delete and its
+  // event are now one transaction, same D6 reasoning as upsertWorktreeRow.
+  db.transaction((tx) => {
+    tx.delete(worktreesTable).where(eq(worktreesTable.id, worktreeId)).run();
+    writeEvent(tx, "worktree", worktreeId, "updated", rowToWorktree(row));
+  });
   return { ok: true };
 }

@@ -70,7 +70,11 @@ export const taskSpecs = sqliteTable(
 
 // The physical, on-disk realization of a TaskSpec's worker lane — 1:1 with
 // TaskSpec, a distinct entity with its own mutating lifecycle (see
-// @orchestra/core's worktree.ts doc comment). Phase 1 spec §2, D20.
+// @orchestra/core's worktree.ts doc comment). Phase 1 spec §2, D20. UNIQUE,
+// not plain (second independent review round, 2026-07-19): the app-level
+// upsert in git/worktrees.ts already treats taskSpecId as 1:1, but nothing
+// stopped a second row for the same TaskSpec at the schema level — this
+// makes the invariant the code already assumes actually enforced.
 export const worktrees = sqliteTable(
   "worktrees",
   {
@@ -85,7 +89,7 @@ export const worktrees = sqliteTable(
     createdAt: text("created_at").notNull(),
     lastSyncAt: text("last_sync_at"),
   },
-  (table) => [index("worktrees_task_spec_id_idx").on(table.taskSpecId)],
+  (table) => [uniqueIndex("worktrees_task_spec_id_idx").on(table.taskSpecId)],
 );
 
 export const agentRuns = sqliteTable(

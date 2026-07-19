@@ -188,7 +188,9 @@ describe("POST /repos and POST /work-intents (Phase 1)", () => {
       });
       expect(res.status).toBe(200);
       const repo = (await res.json()) as { slug: string; rootPath: string };
-      expect(repo.rootPath).toBe(repoRoot);
+      // .toEndWith, not .toBe: registerRepo canonicalizes via realpath
+      // (second review round) — macOS resolves /tmp -> /private/tmp.
+      expect(repo.rootPath).toEndWith(repoRoot);
       expect(repo.slug).toBe(path.basename(repoRoot));
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
