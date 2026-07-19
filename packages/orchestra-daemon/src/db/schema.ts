@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, real, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import {
   WorkIntentStatusSchema,
   RiskTierSchema,
@@ -6,6 +6,7 @@ import {
   AgentRunStatusSchema,
   ReceiptOutcomeSchema,
   VerificationSchema,
+  WorktreeStatusSchema,
 } from "@orchestra/core";
 
 // Materialized tables — one row per live entity, always overwritten in place.
@@ -16,10 +17,23 @@ import {
 // any string under the strict tsconfig, silently defeating the point of
 // having two schema definitions agree in the first place.
 
+// One row per registered repo — one row for P1 (spec §2, D21). `slug` needs
+// a UNIQUE index, not a plain one: SQLite requires an FK's target column to
+// be a PK or carry a UNIQUE constraint, and workIntents.repoSlug below
+// references it.
+export const repos = sqliteTable("repos", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull(),
+  rootPath: text("root_path").notNull(),
+  registeredAt: text("registered_at").notNull(),
+}, (table) => [uniqueIndex("repos_slug_idx").on(table.slug)]);
+
 export const workIntents = sqliteTable("work_intents", {
   id: text("id").primaryKey(),
   planId: text("plan_id").notNull(),
-  repoSlug: text("repo_slug").notNull(),
+  repoSlug: text("repo_slug")
+    .notNull()
+    .references(() => repos.slug),
   intent: text("intent").notNull(),
   status: text("status", { enum: WorkIntentStatusSchema.options }).notNull(),
   createdAt: text("created_at").notNull(),
@@ -52,6 +66,30 @@ export const taskSpecs = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [index("task_specs_work_intent_id_idx").on(table.workIntentId)],
+);
+
+// The physical, on-disk realization of a TaskSpec's worker lane — 1:1 with
+// TaskSpec, a distinct entity with its own mutating lifecycle (see
+// @orchestra/core's worktree.ts doc comment). Phase 1 spec §2, D20. UNIQUE,
+// not plain (second independent review round, 2026-07-19): the app-level
+// upsert in git/worktrees.ts already treats taskSpecId as 1:1, but nothing
+// stopped a second row for the same TaskSpec at the schema level — this
+// makes the invariant the code already assumes actually enforced.
+export const worktrees = sqliteTable(
+  "worktrees",
+  {
+    id: text("id").primaryKey(),
+    taskSpecId: text("task_spec_id")
+      .notNull()
+      .references(() => taskSpecs.id),
+    path: text("path").notNull(),
+    branch: text("branch").notNull(),
+    anchorSha: text("anchor_sha").notNull(),
+    status: text("status", { enum: WorktreeStatusSchema.options }).notNull(),
+    createdAt: text("created_at").notNull(),
+    lastSyncAt: text("last_sync_at"),
+  },
+  (table) => [uniqueIndex("worktrees_task_spec_id_idx").on(table.taskSpecId)],
 );
 
 export const agentRuns = sqliteTable(
@@ -100,8 +138,15 @@ export const receipts = sqliteTable(
 // entity_type / event_type have no Zod counterpart in @orchestra/core (they're
 // a schema.ts-only bookkeeping concept, not a domain contract) — narrowed with
 // a literal tuple instead, still enum-enforced rather than bare `text`.
-const EVENT_ENTITY_TYPES = ["work_intent", "task_spec", "agent_run", "receipt"] as const;
-const EVENT_TYPES = ["created", "updated"] as const;
+export const EVENT_ENTITY_TYPES = [
+  "work_intent",
+  "task_spec",
+  "agent_run",
+  "receipt",
+  "worktree",
+  "repo",
+] as const;
+export const EVENT_TYPES = ["created", "updated"] as const;
 
 /**
  * D6 — append-only, write-only audit trail. NEVER read to reconstruct current

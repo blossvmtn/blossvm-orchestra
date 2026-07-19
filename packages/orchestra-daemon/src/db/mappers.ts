@@ -3,12 +3,16 @@ import {
   TaskSpecSchema,
   AgentRunSchema,
   ReceiptSchema,
+  WorktreeSchema,
+  RepoSchema,
   type WorkIntent,
   type TaskSpec,
   type AgentRun,
   type Receipt,
+  type Worktree,
+  type Repo,
 } from "@orchestra/core";
-import { workIntents, taskSpecs, agentRuns, receipts } from "./schema";
+import { workIntents, taskSpecs, agentRuns, receipts, worktrees, repos } from "./schema";
 
 /**
  * SQLite via Drizzle returns `null` for an absent column on select; the Zod
@@ -39,4 +43,12 @@ export function rowToAgentRun(row: typeof agentRuns.$inferSelect): AgentRun {
 
 export function rowToReceipt(row: typeof receipts.$inferSelect): Receipt {
   return ReceiptSchema.parse(nullsToUndefined(row));
+}
+
+export function rowToWorktree(row: typeof worktrees.$inferSelect): Worktree {
+  return WorktreeSchema.parse(nullsToUndefined(row));
+}
+
+export function rowToRepo(row: typeof repos.$inferSelect): Repo {
+  return RepoSchema.parse(nullsToUndefined(row));
 }

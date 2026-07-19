@@ -28,3 +28,10 @@ export {
   type ReceiptOutcome,
   type Verification,
 } from "./receipt";
+export {
+  WorktreeSchema,
+  WorktreeStatusSchema,
+  type Worktree,
+  type WorktreeStatus,
+} from "./worktree";
+export { RepoSchema, type Repo } from "./repo";

@@ -110,6 +110,9 @@ fn kill_daemon(state: &DaemonProcess) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Phase 1 (D19) — native folder picker for repo registration, not
+        // the legacy app's fuzzy ~/dev/<name> path-guessing.
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![get_daemon_token])
         .setup(|app| {
             match spawn_daemon() {

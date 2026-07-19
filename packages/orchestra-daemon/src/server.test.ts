@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createDb } from "./db/db";
+import { git } from "./git/git";
 import { createFetchHandler, type DaemonDeps } from "./server";
 
 /**
@@ -151,5 +155,136 @@ describe("the IPC path (spec §3.6): real authenticated fetch() over a real loop
 
     const res = await fetch(`${baseUrl}/ping`, { headers: { authorization: "Bearer " } });
     expect(res.status).toBe(401);
+  });
+});
+
+// dispatchWorkIntent's success path spawns a real `claude` process (real API
+// cost) — not exercised here. These cover the cheap paths: auth, real repo
+// registration (no API cost), and the unregistered-repo 404 (rejects before
+// any spawn happens). The full chain was verified live on JD's machine
+// (spec §5's acceptance walk).
+describe("POST /repos and POST /work-intents (Phase 1)", () => {
+  test("POST /repos rejects an unauthenticated request", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const res = await fetch(`${baseUrl}/repos`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  test("POST /repos registers a real git repo", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-server-repo-test-"));
+    try {
+      await git(repoRoot, ["init", "-b", "main"]);
+
+      const res = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: repoRoot }),
+      });
+      expect(res.status).toBe(200);
+      const repo = (await res.json()) as { slug: string; rootPath: string };
+      // .toEndWith, not .toBe: registerRepo canonicalizes via realpath
+      // (second review round) — macOS resolves /tmp -> /private/tmp.
+      expect(repo.rootPath).toEndWith(repoRoot);
+      expect(repo.slug).toBe(path.basename(repoRoot));
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("POST /repos rejects a non-git rootPath with 400", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const notARepo = await mkdtemp(path.join(tmpdir(), "orchestra-server-not-a-repo-"));
+    try {
+      const res = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: notARepo }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await rm(notARepo, { recursive: true, force: true });
+    }
+  });
+
+  test("POST /work-intents returns 404 for an unregistered repoSlug", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const res = await fetch(`${baseUrl}/work-intents`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        repoSlug: "never-registered",
+        intent: "test",
+        taskSpec: {
+          slug: "lane-1",
+          branch: "orch/lane-1",
+          role: "Test",
+          allowedPaths: [],
+          forbiddenPaths: [],
+          acceptance: [],
+        },
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("POST /work-intents returns 400 when required fields are missing", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const res = await fetch(`${baseUrl}/work-intents`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ repoSlug: "x" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // PR #2 review, 2026-07-18 — should-fix: a Zod validation failure on a
+  // *registered* repo's taskSpec used to fall through to a generic 500. This
+  // registers a real repo first (so the request gets past the 404 check)
+  // then sends a taskSpec Zod actually rejects (missing required fields).
+  test("POST /work-intents returns 400 (not 500) when taskSpec fails Zod validation", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-server-zod-test-"));
+    try {
+      await git(repoRoot, ["init", "-b", "main"]);
+      const registerRes = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: repoRoot }),
+      });
+      const repo = (await registerRes.json()) as { slug: string };
+
+      const res = await fetch(`${baseUrl}/work-intents`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          repoSlug: repo.slug,
+          intent: "test",
+          taskSpec: { slug: "lane-1" /* missing branch, role, allowedPaths, etc. */ },
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("invalid taskSpec");
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 });

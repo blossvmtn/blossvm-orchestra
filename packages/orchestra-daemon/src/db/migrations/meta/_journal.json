@@ -22,6 +22,27 @@
       "when": 1784406795186,
       "tag": "0002_lyrical_krista_starr",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784412284288,
+      "tag": "0003_youthful_dazzler",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784427600000,
+      "tag": "0004_backfill_orphan_repos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784422240212,
+      "tag": "0005_unique_worktree_task_spec",
+      "breakpoints": true
     }
   ]
 }
