@@ -88,6 +88,9 @@ export const worktrees = sqliteTable(
     status: text("status", { enum: WorktreeStatusSchema.options }).notNull(),
     createdAt: text("created_at").notNull(),
     lastSyncAt: text("last_sync_at"),
+    // Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md §2, D30).
+    prUrl: text("pr_url"),
+    prNumber: integer("pr_number"),
   },
   (table) => [uniqueIndex("worktrees_task_spec_id_idx").on(table.taskSpecId)],
 );

@@ -43,6 +43,13 @@
       "when": 1784422240212,
       "tag": "0005_unique_worktree_task_spec",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784467537201,
+      "tag": "0006_worktree_pr_fields",
+      "breakpoints": true
     }
   ]
 }

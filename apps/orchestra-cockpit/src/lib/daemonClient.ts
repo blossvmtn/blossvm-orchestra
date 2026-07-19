@@ -30,15 +30,16 @@ const DAEMON_TIMEOUT_MS = 10_000;
  * "Dispatching…" forever with no way out (CodeRabbit, PR #1 review,
  * 2026-07-18). Every daemon call goes through this one bounded fetch.
  */
-async function daemonFetch(path: string, init?: RequestInit): Promise<Response> {
+async function daemonFetch(path: string, init?: RequestInit, timeoutMs: number = DAEMON_TIMEOUT_MS): Promise<Response> {
   const token = await getToken();
   const res = await fetch(`${DAEMON_BASE_URL}${path}`, {
     ...init,
     headers: { ...init?.headers, authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(DAEMON_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
-    throw new Error(`daemon responded ${res.status}`);
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `daemon responded ${res.status}`);
   }
   return res;
 }
@@ -115,4 +116,40 @@ export async function submitWorkIntent(input: {
     body: JSON.stringify(input),
   });
   return (await res.json()) as WorkIntentDispatchResponse;
+}
+
+export type StackedStep = "commit" | "push" | "pr";
+
+export type StackedActionResponse = {
+  worktreeId: string;
+  status: string;
+  prUrl?: string;
+  prNumber?: number;
+  committed: boolean;
+  pushed: boolean;
+  warnings: string[];
+};
+
+// Longer than DAEMON_TIMEOUT_MS — a real `git push` + `gh pr create` can
+// legitimately run close to the daemon's own 90s per-git-command timeout
+// (gh.ts); the generic 10s default would abort a call the daemon is still
+// correctly working on.
+const STACKED_ACTION_TIMEOUT_MS = 120_000;
+
+/** Phase 2 spec §2/§3 step 9/10, D27 — always an explicit cockpit action. */
+export async function runStackedAction(
+  worktreeId: string,
+  steps: StackedStep[],
+  message?: string,
+): Promise<StackedActionResponse> {
+  const res = await daemonFetch(
+    `/worktrees/${worktreeId}/stacked-action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ steps, message }),
+    },
+    STACKED_ACTION_TIMEOUT_MS,
+  );
+  return (await res.json()) as StackedActionResponse;
 }

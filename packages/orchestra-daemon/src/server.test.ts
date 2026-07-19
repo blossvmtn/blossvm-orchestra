@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDb } from "./db/db";
+import { workIntents, taskSpecs, worktrees } from "./db/schema";
 import { git } from "./git/git";
 import { createFetchHandler, type DaemonDeps } from "./server";
 
@@ -19,7 +21,7 @@ import { createFetchHandler, type DaemonDeps } from "./server";
 function startTestDaemon() {
   const deps: DaemonDeps = { token: "test-token", db: createDb(":memory:") };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: createFetchHandler(deps) });
-  return { server, baseUrl: `http://127.0.0.1:${server.port}` };
+  return { server, baseUrl: `http://127.0.0.1:${server.port}`, deps };
 }
 
 let activeServer: ReturnType<typeof Bun.serve> | undefined;
@@ -284,6 +286,126 @@ describe("POST /repos and POST /work-intents (Phase 1)", () => {
       const body = (await res.json()) as { error: string };
       expect(body.error).toBe("invalid taskSpec");
     } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md §3 step
+// 9). Seeds workIntent/taskSpec/worktree rows directly against deps.db
+// (rather than a real dispatch, which spawns a real, real-cost `claude`
+// process) pointing at a real registered repo — a real git push still runs
+// for real (D28's mutex, D31's OD3 algorithm), only createPullRequest is out
+// of reach at the HTTP layer (no injection seam through routeRequest, by
+// design — the live acceptance walk covers the real gh pr create path).
+describe("POST /worktrees/:id/stacked-action (Phase 2)", () => {
+  test("rejects an unauthenticated request", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const res = await fetch(`${baseUrl}/worktrees/${randomUUID()}/stacked-action`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  test("returns 404 for an unknown worktreeId", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const res = await fetch(`${baseUrl}/worktrees/${randomUUID()}/stacked-action`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ steps: ["push"] }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("returns 400 for a malformed steps array", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const res = await fetch(`${baseUrl}/worktrees/${randomUUID()}/stacked-action`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ steps: ["not-a-real-step"] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("a real push against a real registered repo succeeds end to end over HTTP", async () => {
+    const { server, baseUrl, deps } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const originRoot = await mkdtemp(path.join(tmpdir(), "orchestra-server-stacked-origin-"));
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-server-stacked-repo-"));
+    try {
+      await git(originRoot, ["init", "--bare", "-b", "main"]);
+      await git(repoRoot, ["init", "-b", "main"]);
+      await git(repoRoot, ["config", "user.email", "test@example.com"]);
+      await git(repoRoot, ["config", "user.name", "Orchestra Test"]);
+      await Bun.write(path.join(repoRoot, "README.md"), "test\n");
+      await git(repoRoot, ["add", "README.md"]);
+      await git(repoRoot, ["commit", "-m", "initial commit"]);
+      await git(repoRoot, ["remote", "add", "origin", originRoot]);
+      await git(repoRoot, ["push", "-u", "origin", "main"]);
+      await git(repoRoot, ["checkout", "-b", "orch/server-lane"]);
+
+      const registerRes = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: repoRoot }),
+      });
+      const repo = (await registerRes.json()) as { slug: string };
+
+      const now = "2026-07-19T12:00:00.000Z";
+      const workIntentId = randomUUID();
+      deps.db
+        .insert(workIntents)
+        .values({ id: workIntentId, planId: randomUUID(), repoSlug: repo.slug, intent: "test", status: "captured", createdAt: now })
+        .run();
+      const taskSpecId = randomUUID();
+      deps.db
+        .insert(taskSpecs)
+        .values({
+          id: taskSpecId,
+          workIntentId,
+          slug: "server-lane",
+          branch: "orch/server-lane",
+          role: "Test",
+          allowedPaths: [],
+          forbiddenPaths: [],
+          acceptance: [],
+          createdAt: now,
+        })
+        .run();
+      const worktreeId = randomUUID();
+      deps.db
+        .insert(worktrees)
+        .values({
+          id: worktreeId,
+          taskSpecId,
+          path: repoRoot,
+          branch: "orch/server-lane",
+          anchorSha: "abcdef0123456789",
+          status: "active",
+          createdAt: now,
+        })
+        .run();
+
+      const res = await fetch(`${baseUrl}/worktrees/${worktreeId}/stacked-action`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ steps: ["push"] }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { worktreeId: string; pushed: boolean; committed: boolean };
+      expect(body.worktreeId).toBe(worktreeId);
+      expect(body.pushed).toBe(true);
+      expect(body.committed).toBe(false);
+    } finally {
+      await rm(originRoot, { recursive: true, force: true });
       await rm(repoRoot, { recursive: true, force: true });
     }
   });

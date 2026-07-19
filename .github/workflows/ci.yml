@@ -38,7 +38,18 @@ jobs:
       # resolving and testing against dependencies nobody committed.
       - run: bun install --frozen-lockfile
 
+      # Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md) —
+      # gh.ts's tests call the real `gh` CLI (against this repo for gh.test.ts,
+      # against throwaway local-origin repos for stackedAction.test.ts, which
+      # `gh` still refuses to touch without this). `gh` refuses to run AT ALL
+      # inside GitHub Actions without an explicit token — a preflight check
+      # baked into the CLI itself, independent of what remote a command
+      # targets. github.token is already scoped read-only by this workflow's
+      # own `permissions: contents: read` above — this wires the same,
+      # already-minimal token through, not a new grant.
       - run: bun run test
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - run: bunx tsc --noEmit
         working-directory: packages/orchestra-core

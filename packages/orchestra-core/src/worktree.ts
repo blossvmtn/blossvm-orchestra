@@ -18,6 +18,11 @@ export const WorktreeSchema = z.object({
   status: WorktreeStatusSchema,
   createdAt: z.string().datetime(),
   lastSyncAt: z.string().datetime().optional(),
+  // Phase 2 (spec docs/specs/2026-07-19-phase-2-stacked-pr-actions.md §2, D30) —
+  // mirrors Receipt.prUrl; gives the "pr_open" status value above something to
+  // point at without joining through Receipt.
+  prUrl: z.string().url().optional(),
+  prNumber: z.number().int().positive().optional(),
 });
 
 export type Worktree = z.infer<typeof WorktreeSchema>;

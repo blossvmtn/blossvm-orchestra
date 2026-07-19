@@ -5,9 +5,11 @@ import {
   getReceipt,
   pickRepoFolder,
   registerRepo,
+  runStackedAction,
   submitWorkIntent,
   type Receipt,
   type Repo,
+  type StackedActionResponse,
 } from "./lib/daemonClient";
 import "./App.css";
 
@@ -19,7 +21,15 @@ type PingState =
 type DispatchState =
   | { status: "idle" }
   | { status: "dispatching" }
-  | { status: "done"; receipt: Receipt }
+  // worktreeId is undefined for the fixture-dispatch path (no real worktree
+  // gets created) — the "Push & Open PR" button only ever shows once it's set.
+  | { status: "done"; receipt: Receipt; worktreeId?: string }
+  | { status: "error"; message: string };
+
+type StackedActionState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "done"; result: StackedActionResponse }
   | { status: "error"; message: string };
 
 type RepoState =
@@ -37,6 +47,8 @@ function App() {
   const [dispatch, setDispatch] = useState<DispatchState>({ status: "idle" });
   const [repo, setRepo] = useState<RepoState>({ status: "none" });
   const [intent, setIntent] = useState("");
+  const [stackedAction, setStackedAction] = useState<StackedActionState>({ status: "idle" });
+  const [commitMessage, setCommitMessage] = useState("");
 
   useEffect(() => {
     pingDaemon()
@@ -68,6 +80,7 @@ function App() {
   async function handleDispatch() {
     if (repo.status !== "registered") return;
     setDispatch({ status: "dispatching" });
+    setStackedAction({ status: "idle" });
     try {
       const slug = `lane-${Date.now()}`;
       const dispatched = await submitWorkIntent({
@@ -83,7 +96,11 @@ function App() {
         },
       });
       const receipt = await getReceipt(dispatched.receiptId);
-      setDispatch({ status: "done", receipt });
+      setDispatch({ status: "done", receipt, worktreeId: dispatched.worktreeId });
+      // Prefill, not lock — D27's cockpit responsibility to supply a
+      // message when the tree is dirty (spec §2's runStackedAction); JD
+      // can still edit it before clicking "Push & Open PR".
+      setCommitMessage(receipt.summary);
     } catch (err: unknown) {
       setDispatch({ status: "error", message: errorMessage(err) });
     }
@@ -91,12 +108,25 @@ function App() {
 
   async function handleDispatchFixture() {
     setDispatch({ status: "dispatching" });
+    setStackedAction({ status: "idle" });
     try {
       const dispatched = await dispatchFixtureWorkIntent();
       const receipt = await getReceipt(dispatched.receiptId);
       setDispatch({ status: "done", receipt });
     } catch (err: unknown) {
       setDispatch({ status: "error", message: errorMessage(err) });
+    }
+  }
+
+  // D27 — always an explicit click, never automatic after dispatch.
+  async function handleStackedAction() {
+    if (dispatch.status !== "done" || !dispatch.worktreeId) return;
+    setStackedAction({ status: "running" });
+    try {
+      const result = await runStackedAction(dispatch.worktreeId, ["commit", "push", "pr"], commitMessage);
+      setStackedAction({ status: "done", result });
+    } catch (err: unknown) {
+      setStackedAction({ status: "error", message: errorMessage(err) });
     }
   }
 
@@ -151,6 +181,41 @@ function App() {
           <p>outcome: {dispatch.receipt.outcome}</p>
           <p>verification: {dispatch.receipt.verification}</p>
           <p>summary: {dispatch.receipt.summary}</p>
+        </section>
+      )}
+
+      {dispatch.status === "done" && dispatch.worktreeId && (
+        <section>
+          <h2>Push &amp; open PR</h2>
+          <textarea
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+            placeholder="Commit message…"
+            rows={2}
+          />
+          <button
+            onClick={() => void handleStackedAction()}
+            disabled={stackedAction.status === "running"}
+          >
+            {stackedAction.status === "running" ? "Pushing…" : "Push & Open PR"}
+          </button>
+          {stackedAction.status === "error" && (
+            <p className="error">stacked action failed — {stackedAction.message}</p>
+          )}
+          {stackedAction.status === "done" && (
+            <div>
+              {stackedAction.result.warnings.map((w) => (
+                <p key={w}>{w}</p>
+              ))}
+              {stackedAction.result.prUrl && (
+                <p className="ok">
+                  <a href={stackedAction.result.prUrl} target="_blank" rel="noreferrer">
+                    {stackedAction.result.prUrl}
+                  </a>
+                </p>
+              )}
+            </div>
+          )}
         </section>
       )}
     </main>

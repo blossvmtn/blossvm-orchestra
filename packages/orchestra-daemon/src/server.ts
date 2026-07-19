@@ -8,6 +8,7 @@ import {
   RepoNotRegisteredError,
   type DispatchWorkIntentInput,
 } from "./pipeline";
+import { runStackedAction, StackedActionError, WorktreeChainNotFoundError, type StackedStep } from "./git/stackedAction";
 
 type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 
@@ -151,6 +152,48 @@ async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
       // eslint-disable-next-line no-console
       console.error("orchestra-daemon: /work-intents dispatch failed —", err);
       return Response.json({ error: "dispatch failed" }, { status: 500 });
+    }
+  }
+
+  // Phase 2 §2 — the stacked-action route (D27: always an explicit cockpit
+  // click, never automatic). runStackedAction resolves its own repoRoot
+  // internally (worktree -> taskSpec -> workIntent -> repo) — no
+  // pre-resolution here.
+  const stackedActionMatch = /^\/worktrees\/([^/]+)\/stacked-action$/.exec(url.pathname);
+  if (stackedActionMatch && req.method === "POST") {
+    try {
+      const worktreeId = stackedActionMatch[1];
+      const body = (await req.json()) as { steps?: unknown; message?: unknown };
+      if (
+        !worktreeId ||
+        !Array.isArray(body.steps) ||
+        !body.steps.every((s) => s === "commit" || s === "push" || s === "pr")
+      ) {
+        return Response.json({ error: "steps must be an array of \"commit\" | \"push\" | \"pr\"" }, { status: 400 });
+      }
+      if (body.message !== undefined && typeof body.message !== "string") {
+        return Response.json({ error: "message must be a string if provided" }, { status: 400 });
+      }
+      const result = await runStackedAction(deps.db, worktreeId, body.steps as StackedStep[], body.message);
+      return Response.json({
+        worktreeId: result.worktree.id,
+        status: result.worktree.status,
+        prUrl: result.worktree.prUrl,
+        prNumber: result.worktree.prNumber,
+        committed: result.committed,
+        pushed: result.pushed,
+        warnings: result.warnings,
+      });
+    } catch (err) {
+      if (err instanceof StackedActionError) {
+        return Response.json({ error: err.message }, { status: 400 });
+      }
+      if (err instanceof WorktreeChainNotFoundError) {
+        return Response.json({ error: err.message }, { status: 404 });
+      }
+      // eslint-disable-next-line no-console
+      console.error("orchestra-daemon: /worktrees/:id/stacked-action failed —", err);
+      return Response.json({ error: "stacked action failed" }, { status: 500 });
     }
   }
 

@@ -190,3 +190,64 @@ re-deriving from the spec.
 
 - D1–D13 and the prior "Amendment 2026-07-18" section above — additive only.
 - Phase 0's acceptance criteria — unaffected; P1's own criteria live in its spec §5.
+
+## Amendment 2026-07-19 — D27–D33 recorded (Phase 2 kickoff)
+
+### Reason
+
+`docs/specs/2026-07-19-phase-2-stacked-pr-actions.md` is Phase 2's determined-sequence spec
+— compiled via a paper session with JD, independently plan-critiqued across three re-judge
+rounds (each finding real, fixed issues: a missing required commit-message field that would
+have broken every real dispatch, a promise-chain mutex that could permanently deadlock on
+its first git-write failure, a silently-dropped fourth case in the ported OD3 algorithm, and
+several smaller contract gaps), and confirmed clean on the final pass. This amendment
+records its ratified decisions at the architecture level, matching how D14–D26 were recorded
+above for P1's spec.
+
+### Decisions
+
+25. **D27 — the PR trigger is an explicit cockpit action** (a "Push & Open PR" button),
+    never an automatic side effect of `dispatchWorkIntent`. Keeps a human decision between
+    "AI made an edit" and "that edit is a public PR."
+26. **D28 — D9's per-repo git-write mutex covers both this phase's new commit/push/PR-create
+    writes and Phase 1's `createWorktree`/`removeWorktree` writes** — both touch the same
+    shared `.git` object store D9 exists to protect.
+27. **D29 — the mutex is an in-process `Map<string, Promise<unknown>>` promise-chain lock**,
+    keyed by canonicalized repo root (reusing `registerRepo`'s `realpathSync`). No
+    file-based or cross-process lock — the daemon is a single Bun process. **Named
+    implementation constraint**: a naive `.then(fn)` chain wedges permanently on the first
+    throw; the correct mechanism decouples the queue-advancing tracker (`result.catch(() =>
+    undefined)`) from the caller-visible result (`prior.then(fn, fn)`, `fn` as both
+    handlers) — see spec §2 for the exact code.
+28. **D30 — `Worktree` gains `prUrl`/`prNumber`** (both optional), mirroring `Receipt.prUrl`
+    and giving the already-existing-but-unset `"pr_open"` status value something to point
+    at.
+29. **D31 — OD3's dirty-tree semantics (Constitution v2 §11, locked) are inherited
+    unchanged, all four cases**: dirty + `"commit"` in steps → commit (requires a non-empty
+    message) then continue; bare `"pr"` + dirty → refuse; bare `"push"` + dirty → push-only,
+    warn, no commit; `"pr"` present + `"push"` absent + the tree clean by the time the pr
+    step runs (whether originally clean or just-committed-clean) → push first, then
+    create/reuse the PR. `.cursor/`-only dirt never counts as dirty.
+30. **D32 — `gh.ts`, `stacked.ts`'s algorithm, and `workingTree.ts`'s `isMeaningfulDirty` are
+    ported near-verbatim from the legacy app** (executing D23), persistence reworked onto
+    the `worktrees` SQLite table. `createPullRequest`'s title/body inputs (`prTitle`/
+    `prBody` in the legacy caller) are **not** carried forward — `message` is P2's only
+    caller-supplied text, a deliberate scope cut named here, not silently dropped. **Named,
+    accepted residual**: `viewPrForBranch`'s inherited swallow treats any `gh pr view`
+    exit-code-1-or-null failure as "no PR found," not just "genuinely no PR" — ported as-is,
+    surfaces loudly on the next `createPullRequest` call for the same underlying reason.
+31. **D33 — the two P1 residuals (D25 unfenced `Read`, D26 no isolation during dispatch) are
+    re-confirmed as still-accepted, not fixed.** Neither blocks stacked-PR work.
+
+### Consequences for downstream
+
+- P3's build-readiness review inherits `Worktree.prUrl`/`prNumber` and the `withRepoLock`
+  mutex as load-bearing infrastructure, not scaffolding to revisit.
+- D32's dropped `prTitle`/`prBody` override capability and D30/D32's two named residuals are
+  the things this amendment names as open rather than resolved — none gate P2, all should be
+  revisited explicitly rather than silently forgotten.
+
+### What this does NOT change
+
+- D1–D26 and both prior amendments — additive only.
+- Phase 0/Phase 1's acceptance criteria — unaffected; P2's own criteria live in its spec §5.
