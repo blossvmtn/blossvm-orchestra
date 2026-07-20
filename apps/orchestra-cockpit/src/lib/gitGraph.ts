@@ -12,14 +12,14 @@ export type LaneColor = string;
 // Warm, painterly lane palette (Ghibli-leaning) — stable per slot index so
 // colors don't shift as more commits load.
 export const LANE_COLORS: LaneColor[] = [
-  "#dd9fb0", // rose
-  "#74c7ce", // aqua
-  "#9aa2ec", // periwinkle
-  "#8fbf9f", // sage
-  "#e0c079", // gold
-  "#c99ac0", // plum
-  "#e0a58a", // adobe
-  "#9ab0c8", // sky
+  "#9aa0a2", // sage-grey (lane 0 ≈ main — neutral, calm)
+  "#79b7bd", // dusty teal
+  "#9a9fd4", // faded periwinkle
+  "#dd9fb0", // dusty rose
+  "#8fbf9f", // sage green
+  "#d4a75a", // muted gold
+  "#c79ac0", // dusty plum
+  "#9ab0c8", // faded sky
 ];
 
 export function laneColor(index: number): LaneColor {

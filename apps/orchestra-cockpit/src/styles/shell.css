@@ -348,9 +348,8 @@ body {
   gap: 14px;
   padding: 14px 16px;
   border-radius: 11px;
-  border: 1px solid rgba(150, 168, 150, 0.12);
-  border-left: 2px solid var(--lane-color, var(--ink-mute));
-  background: linear-gradient(90deg, rgba(30, 36, 36, 0.5), rgba(22, 28, 28, 0.6));
+  border: 1px solid rgba(150, 168, 150, 0.1);
+  background: linear-gradient(90deg, rgba(30, 36, 34, 0.46), rgba(22, 28, 26, 0.56));
   cursor: pointer;
   text-align: left;
   width: 100%;
@@ -428,8 +427,7 @@ body {
   height: 50px;
   padding: 0 10px 0 8px;
   border: none;
-  border-left: 2px solid var(--lane-color, transparent);
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   text-align: left;

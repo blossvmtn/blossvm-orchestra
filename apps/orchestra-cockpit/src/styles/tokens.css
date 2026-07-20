@@ -22,17 +22,17 @@
   /* accents */
   --rose: #dd9fb0; /* conductor / human actions, selection */
   --rose-strong: #cb86a0;
-  --cyan: #4fc3d6; /* live agent activity */
-  --iris: #7e86f2;
+  --cyan: #79b7bd; /* live agent activity — dusty teal, painterly not neon */
+  --iris: #9a9fd4; /* dusty periwinkle */
 
-  /* status — real lifecycle state only */
-  --status-queued: #6b7686;
-  --status-running: #4fc3d6;
-  --status-pr: #7e86f2;
-  --status-blocked: #d9a24a;
-  --status-succeeded: #6fc28c;
-  --status-failed: #e0736b;
-  --status-cancelled: #8b7f88; /* terminal, not-a-failure — muted mauve-grey */
+  /* status — real lifecycle state only, muted toward a hand-painted palette */
+  --status-queued: #8f968f;
+  --status-running: #79b7bd;
+  --status-pr: #9a9fd4;
+  --status-blocked: #d4a75a;
+  --status-succeeded: #8fbf9f;
+  --status-failed: #cf7a70;
+  --status-cancelled: #a99aa0; /* terminal, not-a-failure — muted mauve-grey */
 
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;

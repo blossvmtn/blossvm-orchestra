@@ -61,8 +61,9 @@ export const GraphRail = memo(function GraphRail({ row, rowHeight, maxLaneCount,
     <svg width={width} height={rowHeight} viewBox={`0 0 ${width} ${rowHeight}`} aria-hidden style={{ flexShrink: 0, overflow: "visible" }}>
       {row.topEdges.map((e, i) => topEdge(e, midY, `t${i}`))}
       {row.bottomEdges.map((e, i) => bottomEdge(e, midY, rowHeight, `b${i}`))}
+      <circle cx={nodeX} cy={midY} r={active ? 9 : 7} fill={row.nodeColor} opacity={0.15} />
       {active ? <circle cx={nodeX} cy={midY} r={7} fill="none" stroke={ACTIVE_RING} strokeWidth={1.4} strokeOpacity={0.85} /> : null}
-      <circle cx={nodeX} cy={midY} r={active ? 4.6 : 3.6} fill={row.nodeColor} stroke={NODE_STROKE} strokeWidth={2} />
+      <circle cx={nodeX} cy={midY} r={active ? 4.6 : 3.6} fill={row.nodeColor} stroke={NODE_STROKE} strokeWidth={1.6} />
       {overflow ? (
         <text x={width - 4} y={midY + 3} textAnchor="end" fill="#7c8a80" style={{ fontSize: 8 }}>
           +{row.laneCount - visible}
