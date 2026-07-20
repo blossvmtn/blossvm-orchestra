@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Receipt, StateSnapshot, TrunkScan } from "@orchestra/core";
+import type { Receipt, StateSnapshot, TrunkScan, SystemHealth, HealthCheck, HealthStatus } from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
 // packages/orchestra-daemon/src/paths.ts. Duplicated rather than imported: the
@@ -162,9 +162,7 @@ export async function getStateSnapshot(): Promise<StateSnapshot> {
   return (await res.json()) as StateSnapshot;
 }
 
-export type HealthStatus = "ok" | "degraded" | "unavailable";
-export type HealthCheck = { name: string; status: HealthStatus; detail?: string };
-export type SystemHealth = { generatedAt: string; checks: HealthCheck[] };
+export type { SystemHealth, HealthCheck, HealthStatus };
 
 /** Phase 3A — measured system health (daemon, db, and safe `--version` probes). */
 export async function getSystemHealth(): Promise<SystemHealth> {
@@ -174,8 +172,17 @@ export async function getSystemHealth(): Promise<SystemHealth> {
 
 export type { TrunkScan };
 
+// A multi-branch scan runs several bounded `git log`s server-side, so give this
+// call more than the module-wide 10s default — otherwise the client can abort
+// before a slow scan returns its (possibly degraded) result (CodeRabbit, PR #5).
+const TRUNK_SCAN_TIMEOUT_MS = 30_000;
+
 /** Phase 3A — the read-only git-log trunk scan behind the Trunk-map view. */
 export async function getTrunkScan(repoSlug: string): Promise<TrunkScan> {
-  const res = await daemonFetch(`/repos/${encodeURIComponent(repoSlug)}/trunk`);
+  const res = await daemonFetch(
+    `/repos/${encodeURIComponent(repoSlug)}/trunk`,
+    undefined,
+    TRUNK_SCAN_TIMEOUT_MS,
+  );
   return (await res.json()) as TrunkScan;
 }

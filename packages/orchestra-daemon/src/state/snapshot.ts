@@ -22,6 +22,11 @@ import {
  * before it leaves the daemon — a malformed persisted row surfaces as a thrown
  * error here (caught as a 500 at the route), never as a silently wrong snapshot.
  */
+// ponytail: full-table read of all six tables per poll — fine at this phase's
+// handful of lanes. If agentRuns/receipts growth ever makes the ~2s poll a hot
+// path, window each list (or switch to a since-last-poll delta), preserving the
+// WorkIntent→TaskSpec→Worktree→AgentRun→Receipt join the view model needs
+// (CodeRabbit, PR #5).
 export function buildStateSnapshot(db: OrchestraDb): StateSnapshot {
   const snapshot = {
     generatedAt: new Date().toISOString(),

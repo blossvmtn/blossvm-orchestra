@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { z } from "zod";
+import { SystemHealthSchema, type HealthCheck, type SystemHealth } from "@orchestra/core";
 import type { OrchestraDb } from "../db/db";
 import { repos } from "../db/schema";
 
@@ -14,19 +14,8 @@ const execFileAsync = promisify(execFile);
  * `detail` strings are fixed, safe summaries, not raw process output that could
  * carry a token (gh's especially).
  */
-export const HealthCheckSchema = z.object({
-  name: z.string(),
-  status: z.enum(["ok", "degraded", "unavailable"]),
-  detail: z.string().optional(),
-});
-export type HealthCheck = z.infer<typeof HealthCheckSchema>;
-
-export const SystemHealthSchema = z.object({
-  generatedAt: z.string(),
-  checks: z.array(HealthCheckSchema),
-});
-export type SystemHealth = z.infer<typeof SystemHealthSchema>;
-
+// HealthCheck / SystemHealth contracts live in @orchestra/core (shared with the
+// cockpit, CodeRabbit PR #5); this module keeps only the real I/O checks.
 const CHECK_TIMEOUT_MS = 4000;
 
 /** First line of `<cmd> --version`, or `unavailable` if the tool isn't runnable. */
