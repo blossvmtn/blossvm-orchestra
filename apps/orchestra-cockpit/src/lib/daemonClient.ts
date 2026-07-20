@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Receipt, StateSnapshot, TrunkScan, SystemHealth, HealthCheck, HealthStatus } from "@orchestra/core";
+import type { Receipt, StateSnapshot, TrunkScan, SystemHealth, HealthCheck, HealthStatus, RiskTier } from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
 // packages/orchestra-daemon/src/paths.ts. Duplicated rather than imported: the
@@ -102,6 +102,7 @@ export type WorkIntentTaskSpecInput = {
   allowedPaths: string[];
   forbiddenPaths: string[];
   acceptance: string[];
+  riskTier?: RiskTier;
 };
 
 /** Spec §3's real dispatch — parallel to dispatchFixtureWorkIntent, real founder input. */
@@ -162,7 +163,7 @@ export async function getStateSnapshot(): Promise<StateSnapshot> {
   return (await res.json()) as StateSnapshot;
 }
 
-export type { SystemHealth, HealthCheck, HealthStatus };
+export type { SystemHealth, HealthCheck, HealthStatus, RiskTier };
 
 /** Phase 3A — measured system health (daemon, db, and safe `--version` probes). */
 export async function getSystemHealth(): Promise<SystemHealth> {

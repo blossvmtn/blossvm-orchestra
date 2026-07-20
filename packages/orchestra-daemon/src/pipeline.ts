@@ -8,6 +8,7 @@ import {
   RepoSchema,
   type WorkIntent,
   type TaskSpec,
+  type RiskTier,
   type AgentRun,
   type Receipt,
   type Worktree,
@@ -155,6 +156,7 @@ export type DispatchWorkIntentInput = {
     allowedPaths: string[];
     forbiddenPaths: string[];
     acceptance: string[];
+    riskTier?: RiskTier;
   };
 };
 
