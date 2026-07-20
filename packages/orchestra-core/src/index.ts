@@ -35,3 +35,4 @@ export {
   type WorktreeStatus,
 } from "./worktree";
 export { RepoSchema, type Repo } from "./repo";
+export { StateSnapshotSchema, type StateSnapshot } from "./snapshot";

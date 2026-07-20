@@ -9,6 +9,8 @@ import {
   type DispatchWorkIntentInput,
 } from "./pipeline";
 import { runStackedAction, StackedActionError, WorktreeChainNotFoundError, type StackedStep } from "./git/stackedAction";
+import { buildStateSnapshot } from "./state/snapshot";
+import { checkSystemHealth } from "./system/health";
 
 type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 
@@ -205,6 +207,26 @@ async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
       return Response.json({ error: "not_found" }, { status: 404 });
     }
     return Response.json(receipt);
+  }
+
+  // Phase 3A — read-only state snapshot, composed from the materialized tables
+  // (never the append-only events diary, D6). Newest-relevant-first ordering
+  // and the aggregate contract are enforced inside buildStateSnapshot; a
+  // malformed persisted row surfaces here as a 500, not a silently bad payload.
+  if (url.pathname === "/state/snapshot" && req.method === "GET") {
+    try {
+      return Response.json(buildStateSnapshot(deps.db));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("orchestra-daemon: /state/snapshot failed —", err);
+      return Response.json({ error: "snapshot failed" }, { status: 500 });
+    }
+  }
+
+  // Phase 3A — measured system health: real, safe checks only (argv + bounded
+  // timeouts). Never returns credentials or token contents (see health.ts).
+  if (url.pathname === "/system/health" && req.method === "GET") {
+    return Response.json(await checkSystemHealth(deps.db));
   }
 
   return Response.json({ error: "not_found" }, { status: 404 });

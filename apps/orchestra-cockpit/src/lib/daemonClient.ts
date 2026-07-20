@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Receipt } from "@orchestra/core";
+import type { Receipt, StateSnapshot } from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
 // packages/orchestra-daemon/src/paths.ts. Duplicated rather than imported: the
@@ -152,4 +152,22 @@ export async function runStackedAction(
     STACKED_ACTION_TIMEOUT_MS,
   );
   return (await res.json()) as StackedActionResponse;
+}
+
+export type { StateSnapshot };
+
+/** Phase 3A — the read-model the cockpit polls (composed from the materialized tables). */
+export async function getStateSnapshot(): Promise<StateSnapshot> {
+  const res = await daemonFetch("/state/snapshot");
+  return (await res.json()) as StateSnapshot;
+}
+
+export type HealthStatus = "ok" | "degraded" | "unavailable";
+export type HealthCheck = { name: string; status: HealthStatus; detail?: string };
+export type SystemHealth = { generatedAt: string; checks: HealthCheck[] };
+
+/** Phase 3A — measured system health (daemon, db, and safe `--version` probes). */
+export async function getSystemHealth(): Promise<SystemHealth> {
+  const res = await daemonFetch("/system/health");
+  return (await res.json()) as SystemHealth;
 }
