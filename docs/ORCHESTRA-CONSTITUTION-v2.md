@@ -144,7 +144,7 @@ You (Orchestrator seat)
 }
 ```
 
-> **Interim defaults (2026-07-20).** The values above are interim — loopback `ollamaBaseUrl` and a small `ollamaModel`. The OD1 / §13 target is **Hermes-4-70B on the DGX Spark**: `ollamaBaseUrl` becomes the Spark's private-overlay address, **not `127.0.0.1`**, and `ollamaModel` the pinned Hermes-4 tag.
+> **Interim defaults & the clerk gateway (2026-07-20).** Module C and the cockpit talk to a **stable local clerk gateway**, never to a model host directly. The `ollamaBaseUrl` / `ollamaModel` values above are the **gateway's backend target**, not a consumer endpoint: interim they point at loopback + a small model; the OD1 / §13 production target is **Hermes-4-70B on the DGX Spark** (a private-overlay address, **not `127.0.0.1`**). The gateway swaps its backend with **no consumer or config change** — so nothing reading the registry should bind these fields as a direct endpoint.
 
 ### `<repo>/.orchestra/state.json` → `OrchestraRepoState`, `WorktreeNode`, `FenceSpec`, `TrunkScanSnapshot`, `NodeStatus`
 
@@ -388,8 +388,10 @@ Moving the gateway from loopback to networked pulls a **private-overlay + auth c
   },
   "clerk": {
     "runtime": "ollama",
+    "gateway_endpoint": "stable local clerk gateway (fixed loopback address) — the only endpoint Module C / the cockpit binds",
+    "gateway_note": "ollama_base + pinned_model are the gateway BACKEND target, not a consumer endpoint; the gateway swaps them (interim gemma <-> Spark Hermes-4) with no consumer or config change (section 13)",
     "ollama_base": "<spark-private-overlay-address>",
-    "ollama_base_note": "Spark overlay address, NOT loopback; 127.0.0.1 was the interim-only default",
+    "ollama_base_note": "gateway backend: Spark overlay address, NOT loopback; 127.0.0.1 was the interim-only default",
     "pinned_model": "hermes-4-70b-fp8",
     "interim_model": "gemma-class (small) behind the replaceable gateway until the Spark is online",
     "context_tokens": 128000,
