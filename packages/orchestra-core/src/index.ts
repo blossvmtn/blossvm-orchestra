@@ -36,3 +36,11 @@ export {
 } from "./worktree";
 export { RepoSchema, type Repo } from "./repo";
 export { StateSnapshotSchema, type StateSnapshot } from "./snapshot";
+export {
+  TrunkScanSchema,
+  TrunkBranchSchema,
+  TrunkCommitSchema,
+  type TrunkScan,
+  type TrunkBranch,
+  type TrunkCommit,
+} from "./trunk";

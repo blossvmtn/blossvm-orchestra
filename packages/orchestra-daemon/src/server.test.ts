@@ -528,3 +528,100 @@ describe("GET /state/snapshot and GET /system/health (Phase 3A)", () => {
     }
   });
 });
+
+// Phase 3A — the read-only git-log trunk scan behind the Trunk-map view. Real
+// git (cheap, no spawn of `claude`, no push). The third test is the one that
+// matters: a lane branch that doesn't exist on disk must degrade in place, not
+// take down the whole scan — the "can't fight me" property JD asked for.
+describe("GET /repos/:slug/trunk (Phase 3A — git-log trunk scan)", () => {
+  test("rejects an unauthenticated request", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const res = await fetch(`${baseUrl}/repos/anything/trunk`);
+    expect(res.status).toBe(401);
+  });
+
+  test("returns 404 for an unregistered repo", async () => {
+    const { server, baseUrl } = startTestDaemon();
+    activeServer = server;
+
+    const res = await fetch(`${baseUrl}/repos/never-registered/trunk`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("scans base + a lane branch, and degrades a missing lane branch instead of failing", async () => {
+    const { server, baseUrl, deps } = startTestDaemon();
+    activeServer = server;
+    const headers = { authorization: "Bearer test-token", "content-type": "application/json" };
+
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "orchestra-trunk-test-"));
+    try {
+      await git(repoRoot, ["init", "-b", "main"]);
+      await git(repoRoot, ["config", "user.email", "test@example.com"]);
+      await git(repoRoot, ["config", "user.name", "Orchestra Test"]);
+      await Bun.write(path.join(repoRoot, "README.md"), "hello\n");
+      await git(repoRoot, ["add", "README.md"]);
+      await git(repoRoot, ["commit", "-m", "initial commit on main"]);
+      await git(repoRoot, ["checkout", "-b", "orch/lane-1"]);
+      await Bun.write(path.join(repoRoot, "feature.txt"), "work\n");
+      await git(repoRoot, ["add", "feature.txt"]);
+      await git(repoRoot, ["commit", "-m", "add feature on the lane"]);
+      await git(repoRoot, ["checkout", "main"]);
+
+      const registerRes = await fetch(`${baseUrl}/repos`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ rootPath: repoRoot }),
+      });
+      const repo = (await registerRes.json()) as { slug: string };
+
+      // One real lane (orch/lane-1) and one ghost lane (orch/ghost) whose branch
+      // was never created on disk — the scan must survive the ghost.
+      const now = "2026-07-20T12:00:00.000Z";
+      for (const [laneSlug, branch] of [
+        ["lane-1", "orch/lane-1"],
+        ["ghost", "orch/ghost"],
+      ] as const) {
+        const workIntentId = randomUUID();
+        deps.db
+          .insert(workIntents)
+          .values({ id: workIntentId, planId: randomUUID(), repoSlug: repo.slug, intent: laneSlug, status: "captured", createdAt: now })
+          .run();
+        const taskSpecId = randomUUID();
+        deps.db
+          .insert(taskSpecs)
+          .values({ id: taskSpecId, workIntentId, slug: laneSlug, branch, role: "Worker", allowedPaths: [], forbiddenPaths: [], acceptance: [], createdAt: now })
+          .run();
+        deps.db
+          .insert(worktrees)
+          .values({ id: randomUUID(), taskSpecId, path: repoRoot, branch, anchorSha: "0".repeat(40), status: "active", createdAt: now })
+          .run();
+      }
+
+      const res = await fetch(`${baseUrl}/repos/${repo.slug}/trunk`, {
+        headers: { authorization: "Bearer test-token" },
+      });
+      expect(res.status).toBe(200);
+      const scan = (await res.json()) as {
+        base: string;
+        branches: { name: string; isBase: boolean; degraded: boolean; commits: { subject: string }[] }[];
+      };
+
+      const base = scan.branches.find((b) => b.isBase);
+      expect(base?.commits.length).toBeGreaterThanOrEqual(1);
+
+      const lane = scan.branches.find((b) => b.name === "orch/lane-1");
+      expect(lane?.degraded).toBe(false);
+      expect(lane?.commits.map((c) => c.subject)).toContain("add feature on the lane");
+
+      const ghost = scan.branches.find((b) => b.name === "orch/ghost");
+      expect(ghost?.degraded).toBe(true);
+      expect(ghost?.commits).toHaveLength(0);
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+});

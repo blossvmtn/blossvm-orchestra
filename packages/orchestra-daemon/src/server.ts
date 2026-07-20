@@ -11,6 +11,7 @@ import {
 import { runStackedAction, StackedActionError, WorktreeChainNotFoundError, type StackedStep } from "./git/stackedAction";
 import { buildStateSnapshot } from "./state/snapshot";
 import { checkSystemHealth } from "./system/health";
+import { scanTrunk, RepoNotFoundError } from "./state/trunk";
 
 type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 
@@ -227,6 +228,27 @@ async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
   // timeouts). Never returns credentials or token contents (see health.ts).
   if (url.pathname === "/system/health" && req.method === "GET") {
     return Response.json(await checkSystemHealth(deps.db));
+  }
+
+  // Phase 3A — read-only git-log trunk scan for one registered repo. Bounded
+  // and graceful (state/trunk.ts): a branch it can't scan degrades in place;
+  // only an unregistered repo is a hard 404.
+  const trunkMatch = /^\/repos\/([^/]+)\/trunk$/.exec(url.pathname);
+  if (trunkMatch && req.method === "GET") {
+    const slug = trunkMatch[1];
+    if (!slug) {
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }
+    try {
+      return Response.json(await scanTrunk(deps.db, decodeURIComponent(slug)));
+    } catch (err) {
+      if (err instanceof RepoNotFoundError) {
+        return Response.json({ error: err.message }, { status: 404 });
+      }
+      // eslint-disable-next-line no-console
+      console.error("orchestra-daemon: /repos/:slug/trunk failed —", err);
+      return Response.json({ error: "trunk scan failed" }, { status: 500 });
+    }
   }
 
   return Response.json({ error: "not_found" }, { status: 404 });

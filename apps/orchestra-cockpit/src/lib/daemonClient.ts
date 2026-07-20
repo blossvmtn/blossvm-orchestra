@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Receipt, StateSnapshot } from "@orchestra/core";
+import type { Receipt, StateSnapshot, TrunkScan } from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
 // packages/orchestra-daemon/src/paths.ts. Duplicated rather than imported: the
@@ -170,4 +170,12 @@ export type SystemHealth = { generatedAt: string; checks: HealthCheck[] };
 export async function getSystemHealth(): Promise<SystemHealth> {
   const res = await daemonFetch("/system/health");
   return (await res.json()) as SystemHealth;
+}
+
+export type { TrunkScan };
+
+/** Phase 3A — the read-only git-log trunk scan behind the Trunk-map view. */
+export async function getTrunkScan(repoSlug: string): Promise<TrunkScan> {
+  const res = await daemonFetch(`/repos/${encodeURIComponent(repoSlug)}/trunk`);
+  return (await res.json()) as TrunkScan;
 }

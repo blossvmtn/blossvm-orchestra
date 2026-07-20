@@ -45,6 +45,11 @@ now discharged.
 - **D40 — promotion unchanged.** Push & Open PR remains the existing explicit stacked
   action (D27); the control is hidden/locked until the run has completed, a receipt exists,
   a worktree exists, and the state is eligible. No new promotion path, never automatic.
+- **D41 — trunk scan is read-only and unbreakable.** The Trunk-map view is backed by a
+  `git log` scan (`GET /repos/:slug/trunk`), not a persisted commit table. It is bounded
+  (≤50 commits/branch, timeout), takes no git-write mutex, and degrades per-branch rather
+  than failing — a missing/detached branch comes back flagged and empty. Per-commit diffs
+  (`git show --numstat`) are the immediately-next slice, not built yet.
 
 ## 2. Backend read layer — **landed this slice**
 
@@ -53,15 +58,21 @@ now discharged.
 - `orchestra-daemon`:
   - `state/snapshot.ts` → `buildStateSnapshot(db)` (D34/D35).
   - `system/health.ts` → `SystemHealthSchema`, `checkSystemHealth(db)` (D36).
-  - `server.ts` → `GET /state/snapshot`, `GET /system/health` (both behind the existing
-    bearer-token auth; snapshot wrapped in try/catch → 500 on a bad row).
+  - `state/trunk.ts` → `scanTrunk(db, slug)` (D41) — read-only `git log` scan for the
+    Trunk-map view: base branch + each live lane's branch with recent commits, **bounded**
+    (≤50 commits/branch, timeout) and **gracefully degrading** (a branch it can't scan
+    returns `degraded: true`, empty, never failing the whole scan). No git-write mutex —
+    nothing here writes. `TrunkScanSchema` in `@orchestra/core`.
+  - `server.ts` → `GET /state/snapshot`, `GET /system/health`, `GET /repos/:slug/trunk`
+    (all behind the existing bearer-token auth; snapshot → 500 on a bad row, trunk → 404
+    only for an unregistered repo).
 - `daemonClient.ts` → typed `getStateSnapshot()`, `getSystemHealth()`, reusing the bounded
   `daemonFetch`.
 - Tests (`server.test.ts`, Phase 3A block): 401 on both routes unauthenticated; empty
   snapshot well-formed; a dispatched fixture appears; a malformed row → 500; health reports
   Daemon + Database `ok` with a well-formed checks array and no token leakage.
 
-**Gates run:** `bun test` (124 pass / 0 fail), `tsc --noEmit` clean on core/daemon/cli/cockpit,
+**Gates run:** `bun test` (127 pass / 0 fail), `tsc --noEmit` clean on core/daemon/cli/cockpit,
 `drizzle-kit check` clean (no schema change). Rust untouched.
 
 ## 3. UI — slices B and C (next)
