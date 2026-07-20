@@ -32,10 +32,11 @@
   --status-blocked: #d9a24a;
   --status-succeeded: #6fc28c;
   --status-failed: #e0736b;
+  --status-cancelled: #8b7f88; /* terminal, not-a-failure — muted mauve-grey */
 
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
-  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-display: "Cormorant Garamond", georgia, serif;
 
   --radius-panel: 12px;
   --radius-control: 9px;
