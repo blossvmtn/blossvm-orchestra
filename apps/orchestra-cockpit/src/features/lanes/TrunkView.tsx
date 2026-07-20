@@ -22,6 +22,7 @@ export function TrunkView({ scope }: { scope: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const [focusedBranch, setFocusedBranch] = useState<string | null>(null);
 
   useEffect(() => {
     if (!scope) {
@@ -48,6 +49,15 @@ export function TrunkView({ scope }: { scope: string | null }) {
     return m;
   }, [scan]);
 
+  // When a lane is focused, only its commits (base..branch) stay lit.
+  const focusedShas = useMemo(() => {
+    if (!focusedBranch) return null;
+    const b = scan?.branches.find((x) => x.name === focusedBranch);
+    const s = new Set<string>();
+    for (const c of b?.commits ?? []) s.add(c.sha);
+    return s;
+  }, [scan, focusedBranch]);
+
   const maxLane = rows.reduce((m, r) => Math.max(m, r.laneCount), 1);
   const selected = selectedSha ? commitsBySha.get(selectedSha) ?? null : null;
   const selectedRow = rows.find((r) => r.sha === selectedSha) ?? null;
@@ -57,14 +67,23 @@ export function TrunkView({ scope }: { scope: string | null }) {
   return (
     <div className="trunk">
       <div className="trunk-list panel">
-        <div className="panel-head">
-          <span className="panel-title mono">
-            {scan?.repoSlug ?? scope} · {scan?.commits.length ?? 0} commits
-          </span>
-          <span className="mono dim" style={{ fontSize: 10.5 }}>
-            base {scan?.base ?? "…"} · git log --all
-          </span>
-        </div>
+        {focusedBranch ? (
+          <div className="panel-head">
+            <span className="mono" style={{ fontSize: 12, color: "var(--cyan)" }}>focused · {focusedBranch}</span>
+            <button className="btn btn-ghost" style={{ height: 26, fontSize: 11 }} onClick={() => setFocusedBranch(null)}>
+              show all lanes ✕
+            </button>
+          </div>
+        ) : (
+          <div className="panel-head">
+            <span className="panel-title mono">
+              {scan?.repoSlug ?? scope} · {scan?.commits.length ?? 0} commits
+            </span>
+            <span className="mono dim" style={{ fontSize: 10.5 }}>
+              base {scan?.base ?? "…"} · click a branch to focus
+            </span>
+          </div>
+        )}
         <div className="trunk-rows">
           {loading && !scan ? <div className="empty">scanning history…</div> : null}
           {error ? <div className="empty err">trunk scan failed — {error}</div> : null}
@@ -72,11 +91,12 @@ export function TrunkView({ scope }: { scope: string | null }) {
           {rows.map((row) => {
             const commit = commitsBySha.get(row.sha);
             const active = row.sha === selectedSha;
+            const dimmed = focusedShas != null && !focusedShas.has(row.sha);
             return (
               <button
                 key={row.sha}
                 className={`trunk-row ${active ? "is-active" : ""}`}
-                style={{ ["--lane-color" as string]: row.nodeColor } as React.CSSProperties}
+                style={{ ["--lane-color" as string]: row.nodeColor, opacity: dimmed ? 0.38 : 1 } as React.CSSProperties}
                 onClick={() => setSelectedSha(row.sha)}
               >
                 <GraphRail row={row} rowHeight={ROW_H} maxLaneCount={maxLane} active={active} />
@@ -94,7 +114,16 @@ export function TrunkView({ scope }: { scope: string | null }) {
                 {commit && (commit.refs?.length ?? 0) > 0 ? (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                     {(commit.refs ?? []).map((ref) => (
-                      <span key={ref} className="pill" style={{ color: row.nodeColor, background: "rgba(255,255,255,0.05)" }}>
+                      <span
+                        key={ref}
+                        className="pill"
+                        style={{ color: row.nodeColor, background: "rgba(255,255,255,0.05)", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocusedBranch((cur) => (cur === ref ? null : ref));
+                        }}
+                        title="Focus this branch"
+                      >
                         <span className="dot" style={{ background: row.nodeColor }} />
                         {ref}
                         {branchStatus.get(ref) ? ` · ${branchStatus.get(ref)}` : ""}
