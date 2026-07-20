@@ -8,7 +8,7 @@ import { DeskView } from "../features/desk/DeskView";
 import { TrunkView } from "../features/lanes/TrunkView";
 import { SystemView } from "../features/system/SystemView";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import heroUrl from "../assets/hero-dark-blossom.png";
+import heroUrl from "../assets/hero-dark-blossom.jpg";
 import "../styles/tokens.css";
 import "../styles/shell.css";
 
