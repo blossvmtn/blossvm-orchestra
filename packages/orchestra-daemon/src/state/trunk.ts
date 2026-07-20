@@ -115,7 +115,22 @@ export async function scanTrunk(db: OrchestraDb, repoSlug: string): Promise<Trun
   const laneStatusByBranch = new Map<string, string>();
   for (const wt of wts) laneStatusByBranch.set(wt.branch, wt.status);
 
-  const branchNames = [base, ...[...laneStatusByBranch.keys()].filter((name) => name !== base)];
+  // All local branches — so every lane in the graph is labeled and focusable,
+  // not just registered worktree lanes. Bounded and graceful.
+  let localBranches: string[] = [];
+  try {
+    const { stdout } = await git(
+      repo.rootPath,
+      ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+      { timeoutMs: LOG_TIMEOUT_MS },
+    );
+    localBranches = stdout.split("\n").map((s) => s.trim()).filter((s) => s.length > 0);
+  } catch {
+    localBranches = [];
+  }
+
+  const extra = [...new Set([...localBranches, ...laneStatusByBranch.keys()])].filter((name) => name !== base);
+  const branchNames = [base, ...extra].slice(0, 24);
   const branches = await Promise.all(
     branchNames.map((name) =>
       scanBranch(repo.rootPath, name, base, name === base, laneStatusByBranch.get(name)),
