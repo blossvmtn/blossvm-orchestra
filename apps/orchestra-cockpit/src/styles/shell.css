@@ -402,7 +402,7 @@ body {
   font-size: 12.5px;
 }
 
-/* ---- trunk map ---- */
+/* ---- trunk map (matches the Paper "Trunk map" board exactly) ---- */
 .trunk {
   display: flex;
   gap: 16px;
@@ -413,51 +413,112 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  background-image: linear-gradient(168deg, rgba(38, 42, 42, 0.52) 0%, rgba(24, 30, 30, 0.72) 52%, rgba(21, 28, 25, 0.8) 100%);
+  border: 1px solid rgba(150, 168, 150, 0.12);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 238, 0.05), 0 18px 40px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+.trunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 42px;
+  flex-shrink: 0;
+  padding: 0 18px;
+}
+.linkbtn {
+  border: none;
+  background: transparent;
+  color: #7c8a80;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  cursor: pointer;
+  padding: 0;
 }
 .trunk-rows {
   display: flex;
   flex-direction: column;
   overflow: auto;
-  padding: 6px;
 }
 .trunk-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 50px;
-  padding: 0 10px 0 8px;
+  gap: 13px;
+  height: 58px;
+  flex-shrink: 0;
+  padding: 0 18px;
   border: none;
-  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   text-align: left;
   width: 100%;
   color: inherit;
 }
-.trunk-row:hover {
-  background: rgba(221, 159, 176, 0.05);
-}
-.trunk-row.is-active {
-  background: linear-gradient(90deg, rgba(221, 159, 176, 0.14), rgba(0, 0, 0, 0));
-}
 .trunk-main {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+}
+.trunk-subject {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .trunk-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: 9px;
 }
 .trunk-inspector {
-  width: 380px;
+  width: 452px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  background-color: rgba(16, 21, 28, 0.82);
+  border-left: 1px solid #1c242e;
+}
+.insp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #1c242e;
+}
+.eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #667080;
+}
+.insp-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 16px 20px;
+  background-color: rgba(12, 16, 23, 0.6);
+  border-top: 1px solid #1c242e;
+}
+.insp-diffbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  border-radius: 9px;
+  background-color: rgba(126, 134, 242, 0.1);
+  border: 1px solid #363c63;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: #a6abf5;
 }
 
 @media (prefers-reduced-motion: reduce) {
