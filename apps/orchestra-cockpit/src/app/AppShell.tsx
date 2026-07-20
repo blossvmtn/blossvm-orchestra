@@ -5,6 +5,7 @@ import { toLanes } from "../lib/snapshotViewModel";
 import { LeftRail } from "../components/LeftRail";
 import { SystemBar } from "../components/SystemBar";
 import { DeskView } from "../features/desk/DeskView";
+import { TrunkView } from "../features/lanes/TrunkView";
 import heroUrl from "../assets/hero-dark-blossom.png";
 import "../styles/tokens.css";
 import "../styles/shell.css";
@@ -37,7 +38,7 @@ export function AppShell() {
       />
       <main className="main">
         <SystemBar view={view} snap={snap} />
-        {view === "desk" ? (
+        {view === "desk" && (
           <div className="view">
             <DeskView
               snapshot={snapshot}
@@ -48,9 +49,15 @@ export function AppShell() {
               error={snap.error}
             />
           </div>
-        ) : (
+        )}
+        {view === "lanes" && (
+          <div className="view">
+            <TrunkView scope={scope} />
+          </div>
+        )}
+        {view !== "desk" && view !== "lanes" && (
           <div className="view placeholder">
-            <p>{view} — wired next; the Desk is live.</p>
+            <p>{view} — wired next; the Desk and Trunk map are live.</p>
           </div>
         )}
       </main>

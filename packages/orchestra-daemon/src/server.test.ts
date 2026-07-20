@@ -607,8 +607,15 @@ describe("GET /repos/:slug/trunk (Phase 3A — git-log trunk scan)", () => {
       expect(res.status).toBe(200);
       const scan = (await res.json()) as {
         base: string;
+        commits: { subject: string; parents: string[] }[];
         branches: { name: string; isBase: boolean; degraded: boolean; commits: { subject: string }[] }[];
       };
+
+      // Flat `git log --all` list drives the lane graph: both commits present,
+      // and the feature commit records its single parent.
+      expect(scan.commits.length).toBeGreaterThanOrEqual(2);
+      expect(scan.commits.some((c) => c.parents.length === 1)).toBe(true);
+      expect(scan.commits.some((c) => c.parents.length === 0)).toBe(true);
 
       const base = scan.branches.find((b) => b.isBase);
       expect(base?.commits.length).toBeGreaterThanOrEqual(1);

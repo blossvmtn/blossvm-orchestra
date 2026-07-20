@@ -30,3 +30,14 @@ Orchestra specifically adapts T3 Code's git worktree lifecycle posture
 when a worktree path already exists) and stacked commit → push → `gh pr create`
 dirty-tree semantics (OD3 / T3-mirror) via `child_process.execFile("git"|"gh", …)`.
 Orchestra does **not** fork the T3 Code GUI.
+
+---
+
+This product also includes the commit-graph layout and rail-rendering approach
+adapted from [Terax](https://github.com/crynta/terax-ai) (Apache-2.0), namely
+`src/modules/git-history/lib/graph.ts` and `GraphRail.tsx`. Orchestra's
+`apps/orchestra-cockpit/src/lib/gitGraph.ts` and
+`apps/orchestra-cockpit/src/features/lanes/GraphRail.tsx` are adaptations of
+those files (lane-based layout with nil-placeholder straight rails, and the
+per-row SVG rail with short rounded merge/branch edges). Copyright (c) the Terax
+authors; licensed under the Apache License, Version 2.0.

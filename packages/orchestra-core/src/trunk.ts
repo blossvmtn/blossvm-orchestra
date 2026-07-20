@@ -12,6 +12,8 @@ export const TrunkCommitSchema = z.object({
   subject: z.string(),
   author: z.string(),
   committedAt: z.string(),
+  /** Parent SHAs (space-separated %P) — drives the lane graph layout. */
+  parents: z.array(z.string()),
 });
 export type TrunkCommit = z.infer<typeof TrunkCommitSchema>;
 
@@ -31,5 +33,7 @@ export const TrunkScanSchema = z.object({
   base: z.string(),
   scannedAt: z.string(),
   branches: z.array(TrunkBranchSchema),
+  /** Flat `git log --all` list, newest-first — the input to the lane-graph layout. */
+  commits: z.array(TrunkCommitSchema),
 });
 export type TrunkScan = z.infer<typeof TrunkScanSchema>;

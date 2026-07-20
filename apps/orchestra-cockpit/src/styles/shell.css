@@ -403,6 +403,65 @@ body {
   font-size: 12.5px;
 }
 
+/* ---- trunk map ---- */
+.trunk {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+}
+.trunk-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.trunk-rows {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 6px;
+}
+.trunk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 10px 0 8px;
+  border: none;
+  border-left: 2px solid var(--lane-color, transparent);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  color: inherit;
+}
+.trunk-row:hover {
+  background: rgba(221, 159, 176, 0.05);
+}
+.trunk-row.is-active {
+  background: linear-gradient(90deg, rgba(221, 159, 176, 0.14), rgba(0, 0, 0, 0));
+}
+.trunk-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.trunk-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.trunk-inspector {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

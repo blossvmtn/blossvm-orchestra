@@ -16,7 +16,9 @@ export class RepoNotFoundError extends Error {
 // subject or author name, so parsing a `git log` line never splits wrong.
 const RECORD_SEP = "\x1e";
 const UNIT_SEP = "\x1f";
-const LOG_FORMAT = ["%H", "%h", "%s", "%an", "%cI"].join(UNIT_SEP) + RECORD_SEP;
+const LOG_FORMAT = ["%H", "%h", "%s", "%an", "%cI", "%P"].join(UNIT_SEP) + RECORD_SEP;
+// How many commits the flat `git log --all` returns for the graph.
+const MAX_GRAPH_COMMITS = 120;
 // Bounded so a long-lived branch can never make the scan slow or huge.
 const MAX_COMMITS_PER_BRANCH = 50;
 const LOG_TIMEOUT_MS = 10_000;
@@ -27,13 +29,14 @@ function parseLog(stdout: string): TrunkCommit[] {
     .map((record) => record.trim())
     .filter((record) => record.length > 0)
     .map((record) => {
-      const [sha, shortSha, subject, author, committedAt] = record.split(UNIT_SEP);
+      const [sha, shortSha, subject, author, committedAt, parentsRaw] = record.split(UNIT_SEP);
       return {
         sha: sha ?? "",
         shortSha: shortSha ?? "",
         subject: subject ?? "",
         author: author ?? "",
         committedAt: committedAt ?? "",
+        parents: (parentsRaw ?? "").trim().split(/\s+/).filter((p) => p.length > 0),
       };
     })
     .filter((commit) => commit.sha.length > 0);
@@ -104,5 +107,19 @@ export async function scanTrunk(db: OrchestraDb, repoSlug: string): Promise<Trun
     ),
   );
 
-  return TrunkScanSchema.parse({ repoSlug, base, scannedAt: new Date().toISOString(), branches });
+  // Flat, newest-first log across ALL refs — the lane-graph layout consumes this
+  // (with parents). Bounded and graceful, same as per-branch scans.
+  let commits: TrunkCommit[] = [];
+  try {
+    const { stdout } = await git(
+      repo.rootPath,
+      ["log", "--all", `--format=${LOG_FORMAT}`, "-n", String(MAX_GRAPH_COMMITS)],
+      { timeoutMs: LOG_TIMEOUT_MS },
+    );
+    commits = parseLog(stdout);
+  } catch {
+    commits = [];
+  }
+
+  return TrunkScanSchema.parse({ repoSlug, base, scannedAt: new Date().toISOString(), branches, commits });
 }
