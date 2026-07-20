@@ -1,6 +1,7 @@
 # Orchestra UI — Constitution v2
 
 **Status:** Authority for build  
+**Last amended:** 2026-07-20 (§13 — two-machine hardware + Hermes-4 clerk; supersedes the gemma4:31b / 48 GB-laptop clerk pin)  
 **Repo home:** `blossvmtn/blossvm-orchestra` (this repo; orchestrates *over* registered product repos — never ships inside them)  
 **Product name:** blossvm-orchestra (not “Orchestra UI” / not `orchestra-ui`)  
 **Companions:** heart extraction (pain) + Hermes mental model (engine)  
@@ -30,7 +31,7 @@ Parallel subscription agent sessions collide when scopes overlap (Security vs Co
 | Seat | Who | Job |
 |------|-----|-----|
 | **Orchestrator** | You, playing the Fable *pattern* (any planner surface optional) | Goals, model discernment, fences, overrides |
-| **Clerk** | **Hermes Agent** runtime + tool-capable local model via Ollama — **product core** | Liaison, packet compile/parse, sync coherence, landscape truth |
+| **Clerk** | **Hermes-4-70B** (local weights) via Ollama on **Machine 2 (DGX Spark, 128 GB)** — **product core**; gemma-class interim behind the replaceable gateway until the Spark is online | Liaison, packet compile/parse, sync coherence, landscape truth |
 | **Workers** | Cursor / Claude / Codex **subscriptions** | Execute inside fenced worktrees |
 
 **Fable is not a vendor dependency.** It is the mental model of lane dispatch + fencing + reconcile. The UI mirrors that shape so *you* inhabit the orchestrator seat. Hermes is the free assistant inside the harness that keeps the stream of thought conscious, relevant, and current.
@@ -47,7 +48,7 @@ Parallel subscription agent sessions collide when scopes overlap (Security vs Co
 | Out | Prisma · NextAuth (local tool; file-based state) |
 | Git | `child_process.execFile("git", …)` only — no shell string interpolation |
 | PR host | `gh` CLI (same posture as T3 Code) |
-| Local clerk | **Hermes Agent** + Ollama `http://127.0.0.1:11434/v1` · pinned brain: **`gemma4:31b`** (64k ctx) · Qwen 3.6 parked spare · Hermes 3/4 LLM weights are NOT the Agent brain |
+| Local clerk | **Hermes-4-70B** (FP8) via Ollama on the **Spark over the private overlay** (not loopback) · gemma-class interim until the Spark is online · Qwen 3.6 parked spare · **the Hermes-4 weights ARE the clerk brain** (supersedes v2 "weights ≠ Agent brain" — see §13) |
 | Transport | Clipboard + parseable markdown JSON fences — **no API keys required** |
 | Visual libs v0 | Native SVG only — **no** React Flow / Recharts |
 | Multi-repo | `~/.orchestra/registry.json` registers N repos; Orchestra never ships inside them |
@@ -142,6 +143,8 @@ You (Orchestrator seat)
   }
 }
 ```
+
+> **Interim defaults (2026-07-20).** The values above are interim — loopback `ollamaBaseUrl` and a small `ollamaModel`. The OD1 / §13 target is **Hermes-4-70B on the DGX Spark**: `ollamaBaseUrl` becomes the Spark's private-overlay address, **not `127.0.0.1`**, and `ollamaModel` the pinned Hermes-4 tag.
 
 ### `<repo>/.orchestra/state.json` → `OrchestraRepoState`, `WorktreeNode`, `FenceSpec`, `TrunkScanSnapshot`, `NodeStatus`
 
@@ -285,6 +288,8 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
 
 **First implementation slice after P0:** Module A worktrees (P1) — physical isolation is the painkiller; Hermes without fences is theater.
 
+**Clerk-host note (2026-07-20).** P4 (Module C) is built against the **replaceable clerk gateway** with a **gemma-class interim model**; **Hermes-4-70B on the DGX Spark** is the production target the gateway swaps to once the Spark is online. Do **not** hard-wire P4 to a single model or to loopback — the gateway abstracts model + address (see §13, OD1).
+
 ---
 
 ## 10. Honest deferrals
@@ -306,7 +311,7 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
 
 | ID | Lock | Notes |
 |----|------|-------|
-| **OD1** | Detect once → pin **`gemma4:31b`** (64k ctx Modelfile) → freeze in registry/`~/.hermes` | Hermes Agent runtime ≠ Hermes 3/4 LLM weights. Qwen 3.6 = manual spare only. JD hardware: M5 MBP 48 GB. |
+| **OD1** *(amended 2026-07-20)* | Re-pin → **Hermes-4-70B (FP8)** on the **DGX Spark over the private overlay** → gemma-class interim behind the gateway until the Spark is online | **Supersedes the original `gemma4:31b` pin** (archived verbatim in §13). Hybrid `<think>` used deliberately — off for clerical packet work, on for orchestration. **The Hermes-4 weights ARE the clerk brain.** Qwen 3.6 = manual spare. |
 | **OD2** | `FenceSpec` in `state.json` is SoT → emit `.cursor/rules/orchestra-fence.mdc` into worktree | No parallel `fence.json` |
 | **OD3** | **T3-mirror** stacked semantics | Dirty + stack includes commit → commit then continue. Bare `create_pr` + dirty → refuse. Bare `push` + dirty → push commits only, warn. |
 | **Path** | `<repo>/.orchestra/worktrees/<workerSlug>/` | T3-analogue project-local isolation |
@@ -324,6 +329,50 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
 
 ---
 
+## 13. Amendment 2026-07-20 — Two-machine hardware + Hermes-4 clerk
+
+**Status:** Accepted · supersedes the OD1 `gemma4:31b` / 48 GB-laptop clerk pin.
+
+### Trigger
+
+Machine 2 resolved as a single **NVIDIA DGX Spark** (128 GB, CUDA). Apple retired the 256 GB Mac Studio M3 Ultra tier, killing the "Mac Studio hosts the clerk" plan. The **M5 MacBook Pro (48 GB)** docks at the desk for macOS creative/gaming and is the interim clerk host + remote-control surface; **Machine 1** stays the Fedora KDE cockpit + cloud worker agents.
+
+### Decision
+
+The clerk brain is **Hermes-4-70B (FP8)** served via **Ollama on the Spark over a private network overlay**. A **gemma-class small model** runs the clerk locally behind the replaceable gateway until the Spark is online.
+
+**Why Hermes-4-70B:** it is trained for schema adherence — emitting valid JSON *for a given schema* and *repairing* malformed objects — which is precisely the clerk's packet job (compile/parse MANIFEST / SYNC-LOG / OVERRIDE / PR-BRIEF) and its worst-case failure mode. It emits real `<tool_call>` tags, is steerable and low-refusal, and its hybrid `<think>` mode is used deliberately (off for clerical packet work, on for orchestration). FP8 weights (~70 GB) fit the Spark's 128 GB.
+
+### What changed
+
+- **OD1** re-pinned (§11) — Hermes-4-70B on the Spark; gemma-class interim; Qwen 3.6 spare.
+- The v2 rule that "Hermes Agent runtime ≠ Hermes 3/4 LLM weights" is **retired** — the Hermes-4 weights **are** the clerk brain. §1, §2, §5, §9, and the `[ORCHESTRA-ARCH-SPEC]` `clerk{}` block are updated to match.
+- Clerk transport target moves from loopback (`127.0.0.1:11434`) to the Spark's private-overlay address; loopback + a small model remain the interim default.
+
+### Non-blocking build implication
+
+Moving the gateway from loopback to networked pulls a **private-overlay + auth control surface** into **Module C** scope. This does not block P1–P3: build **P4 against the replaceable gateway with an interim model**, then swap the gateway's target to the Spark when it comes online. Do not hard-wire P4 to one model or to loopback.
+
+### Still open
+
+- Concrete private-overlay tooling + the Spark's actual address.
+- The authenticated phone/MacBook **remote-control surface** (job state, approve bounded actions, cancel, retrieve outputs) — grown *past* the original P5 polish scope; likely its own ADR.
+- Hermes-4-70B's served context window on the Spark — the Llama-3.1-70B base implies 128k; verify at deploy.
+
+### Superseded state — archived verbatim (do not delete)
+
+> Original **OD1** (§11, locked 2026-07-11):
+>
+> | **OD1** | Detect once → pin **`gemma4:31b`** (64k ctx Modelfile) → freeze in registry/`~/.hermes` | Hermes Agent runtime ≠ Hermes 3/4 LLM weights. Qwen 3.6 = manual spare only. JD hardware: M5 MBP 48 GB. |
+>
+> Original §2 "Local clerk" row:
+>
+> | Local clerk | **Hermes Agent** + Ollama `http://127.0.0.1:11434/v1` · pinned brain: **`gemma4:31b`** (64k ctx) · Qwen 3.6 parked spare · Hermes 3/4 LLM weights are NOT the Agent brain |
+>
+> Retired naming rule: "Hermes 3/4 LLM weights are NOT the Hermes Agent brain."
+
+---
+
 ### [ORCHESTRA-ARCH-SPEC]
 ```json
 {
@@ -333,17 +382,24 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
   "stack": "create-t3-app: typescript+tailwind+trpc, no prisma, no nextauth",
   "spine": {
     "pain": "parallel subscription sessions collide; need multi-lane overview + conductor control",
-    "engine": "Hermes Agent runtime + gemma4:31b clerk is product core; human plays Fable-pattern orchestrator; subs are workers",
+    "engine": "Hermes-4-70B clerk is product core (clerk/product core); Claude Code is the worker provider; human plays Fable-pattern orchestrator",
     "fable": "mental model / UI shape — not a vendor dependency",
-    "naming_warning": "Hermes 3/4 LLM weights are NOT the Hermes Agent brain"
+    "naming_resolution_2026-07-20": "the Hermes-4-70B weights ARE the clerk brain; the earlier 'Hermes Agent runtime != Hermes 3/4 weights' rule is retired (see section 13)"
   },
   "clerk": {
-    "runtime": "hermes-agent",
-    "ollama_base": "http://127.0.0.1:11434/v1",
-    "pinned_model": "gemma4:31b",
-    "context_tokens": 64000,
+    "runtime": "ollama",
+    "ollama_base": "<spark-private-overlay-address>",
+    "ollama_base_note": "Spark overlay address, NOT loopback; 127.0.0.1 was the interim-only default",
+    "pinned_model": "hermes-4-70b-fp8",
+    "interim_model": "gemma-class (small) behind the replaceable gateway until the Spark is online",
+    "context_tokens": 128000,
     "spare_models": ["qwen3.6"],
-    "jd_hardware": "Apple M5 MBP 48GB"
+    "hardware": {
+      "machine_1": "Fedora KDE workstation — cockpit + cloud worker agents",
+      "machine_2": "NVIDIA DGX Spark (128GB, CUDA) — clerk host (Hermes-4-70B FP8 via Ollama)",
+      "dock": "Apple M5 MacBook Pro (48GB) — macOS creative/gaming; interim clerk host + remote-control surface"
+    },
+    "amended": "2026-07-20 (section 13) — supersedes the gemma4:31b @64k / M5-48GB-laptop clerk pin"
   },
   "t3_code": {
     "upstream": "pingdotgg/t3code",
@@ -364,7 +420,7 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
   "modules": {
     "A": "Git & PR Engine — T3-pattern worktrees + stacked PR; fence writer; trunk scan; execFile git/gh only",
     "B": "Landscape + Conductor Desk — cinematic SVG trunk; monitor strip; desk paste/copy; never call git",
-    "C": "Hermes Clerk — Hermes Agent + Ollama gemma4:31b; liaise; packet parse/compile; manifest dispatch; no API keys"
+    "C": "Hermes Clerk — Hermes-4-70B via Ollama on the DGX Spark over the private overlay (gemma-class interim behind the replaceable gateway); liaise; packet parse/compile; manifest dispatch; no API keys"
   },
   "ui_zones": ["trunk_top", "monitor_mid", "conductor_desk_bottom"],
   "schemas": {
@@ -401,7 +457,7 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
   ],
   "onboarding": [
     "detect git+gh+Cursor+Ollama",
-    "one-click Hermes Agent hook → pin gemma4:31b 64k",
+    "one-click clerk hook → gateway pins Hermes-4-70B on the Spark (gemma-class interim until online)",
     "drag-drop repo anchor",
     "MCP cards via copy/reveal"
   ],
@@ -410,7 +466,7 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
     { "id": "P1", "name": "Worktrees + fences (T3-pattern)", "exit": "CRUD+fence on disposable repo" },
     { "id": "P2", "name": "Stacked PR actions", "exit": "real PR from desk via gh" },
     { "id": "P3", "name": "Cinematic trunk + desk", "exit": "fixture map + SYNC-LOG round-trip" },
-    { "id": "P4", "name": "Hermes clerk core (gemma4:31b)", "exit": "liaise → clipboard MD valid" },
+    { "id": "P4", "name": "Hermes clerk core (Hermes-4-70B on the Spark; interim model via gateway)", "exit": "liaise → clipboard MD valid" },
     { "id": "P5", "name": "Onboarding + polish", "exit": "newbie path green end-to-end" }
   ],
   "first_slice_after_p0": "P1 Module A worktrees",
@@ -425,7 +481,8 @@ Colors: active **blue** · merged **green** · stashed **orange** · orphaned **
   "decisions_locked": [
     {
       "id": "OD1",
-      "lock": "pin gemma4:31b @ 64k ctx; freeze; qwen3.6 spare only; Hermes 3/4 weights ≠ Agent brain"
+      "lock": "re-pin Hermes-4-70B (FP8) on the DGX Spark over the private overlay; gemma-class interim behind the gateway; qwen3.6 spare; the Hermes-4 weights ARE the clerk brain",
+      "amended": "2026-07-20 (section 13) — supersedes the original gemma4:31b @64k pin, archived verbatim in section 13"
     },
     {
       "id": "OD2",
