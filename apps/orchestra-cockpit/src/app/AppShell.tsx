@@ -6,6 +6,7 @@ import { LeftRail } from "../components/LeftRail";
 import { SystemBar } from "../components/SystemBar";
 import { DeskView } from "../features/desk/DeskView";
 import { TrunkView } from "../features/lanes/TrunkView";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import heroUrl from "../assets/hero-dark-blossom.png";
 import "../styles/tokens.css";
 import "../styles/shell.css";
@@ -38,6 +39,7 @@ export function AppShell() {
       />
       <main className="main">
         <SystemBar view={view} snap={snap} />
+        <ErrorBoundary key={view}>
         {view === "desk" && (
           <div className="view">
             <DeskView
@@ -60,6 +62,7 @@ export function AppShell() {
             <p>{view} — wired next; the Desk and Trunk map are live.</p>
           </div>
         )}
+        </ErrorBoundary>
       </main>
     </div>
   );

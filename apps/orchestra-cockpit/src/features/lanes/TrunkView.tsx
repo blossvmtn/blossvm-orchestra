@@ -91,9 +91,9 @@ export function TrunkView({ scope }: { scope: string | null }) {
                     </span>
                   </span>
                 </div>
-                {commit && commit.refs.length > 0 ? (
+                {commit && (commit.refs?.length ?? 0) > 0 ? (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    {commit.refs.map((ref) => (
+                    {(commit.refs ?? []).map((ref) => (
                       <span key={ref} className="pill" style={{ color: row.nodeColor, background: "rgba(255,255,255,0.05)" }}>
                         <span className="dot" style={{ background: row.nodeColor }} />
                         {ref}
@@ -113,9 +113,9 @@ export function TrunkView({ scope }: { scope: string | null }) {
           <>
             <div className="panel-head">
               <span className="field-label">Commit</span>
-              {selected.refs.length > 0 ? (
+              {(selected.refs?.length ?? 0) > 0 ? (
                 <span className="mono dim" style={{ fontSize: 11 }}>
-                  {selected.refs.join(" · ")}
+                  {(selected.refs ?? []).join(" · ")}
                 </span>
               ) : null}
             </div>
