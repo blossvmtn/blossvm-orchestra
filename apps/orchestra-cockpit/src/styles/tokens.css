@@ -1,0 +1,54 @@
+/*
+ * Phase 3A design tokens — the dark instrument-panel + cherry-blossom direction
+ * locked in the 2026-07-20 Paper session. Rose = the conductor's (your) actions;
+ * cyan = live agent activity; the remaining status hues are used only for real
+ * lifecycle state, never decoration.
+ */
+:root {
+  /* dimensional dark grounds */
+  --bg-0: #0e1218;
+  --bg-1: #141a22;
+  --bg-2: #1a222c;
+  --panel: rgba(21, 27, 35, 0.86);
+  --panel-rail: rgba(19, 24, 32, 0.8);
+  --line: #262f3a;
+  --line-soft: #1c242e;
+
+  /* warm-white ink, not pure white */
+  --ink: #e9e4da;
+  --ink-dim: #9ba6b2;
+  --ink-mute: #667080;
+
+  /* accents */
+  --rose: #dd9fb0; /* conductor / human actions, selection */
+  --rose-strong: #cb86a0;
+  --cyan: #4fc3d6; /* live agent activity */
+  --iris: #7e86f2;
+
+  /* status — real lifecycle state only */
+  --status-queued: #6b7686;
+  --status-running: #4fc3d6;
+  --status-pr: #7e86f2;
+  --status-blocked: #d9a24a;
+  --status-succeeded: #6fc28c;
+  --status-failed: #e0736b;
+  --status-cancelled: #8b7f88; /* terminal, not-a-failure — muted mauve-grey */
+
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+  --font-display: "Cormorant Garamond", georgia, serif;
+
+  --radius-panel: 12px;
+  --radius-control: 9px;
+}
+
+/* Accessibility floor (D38/handoff): honor reduced-motion for every transition. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

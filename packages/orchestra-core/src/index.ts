@@ -35,3 +35,20 @@ export {
   type WorktreeStatus,
 } from "./worktree";
 export { RepoSchema, type Repo } from "./repo";
+export { StateSnapshotSchema, type StateSnapshot } from "./snapshot";
+export {
+  HealthStatusSchema,
+  HealthCheckSchema,
+  SystemHealthSchema,
+  type HealthStatus,
+  type HealthCheck,
+  type SystemHealth,
+} from "./health";
+export {
+  TrunkScanSchema,
+  TrunkBranchSchema,
+  TrunkCommitSchema,
+  type TrunkScan,
+  type TrunkBranch,
+  type TrunkCommit,
+} from "./trunk";

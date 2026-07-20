@@ -1,0 +1,35 @@
+import { z } from "zod";
+
+/**
+ * Phase 3A — the read-only trunk scan the Trunk-map view renders. Derived from
+ * `git log` at request time (not persisted), so it's a contract over what the
+ * daemon scanned, not a domain entity. A branch that couldn't be scanned comes
+ * back `degraded: true` with no commits rather than failing the whole scan.
+ */
+export const TrunkCommitSchema = z.object({
+  sha: z.string(),
+  shortSha: z.string(),
+  subject: z.string(),
+  author: z.string(),
+  committedAt: z.string(),
+});
+export type TrunkCommit = z.infer<typeof TrunkCommitSchema>;
+
+export const TrunkBranchSchema = z.object({
+  name: z.string(),
+  isBase: z.boolean(),
+  /** The live worktree status if this branch is an active lane; absent for plain branches. */
+  status: z.string().optional(),
+  /** True when this branch couldn't be fully scanned (missing on disk, etc.). */
+  degraded: z.boolean(),
+  commits: z.array(TrunkCommitSchema),
+});
+export type TrunkBranch = z.infer<typeof TrunkBranchSchema>;
+
+export const TrunkScanSchema = z.object({
+  repoSlug: z.string(),
+  base: z.string(),
+  scannedAt: z.string(),
+  branches: z.array(TrunkBranchSchema),
+});
+export type TrunkScan = z.infer<typeof TrunkScanSchema>;
