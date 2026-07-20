@@ -6,6 +6,7 @@ import { LeftRail } from "../components/LeftRail";
 import { SystemBar } from "../components/SystemBar";
 import { DeskView } from "../features/desk/DeskView";
 import { TrunkView } from "../features/lanes/TrunkView";
+import { SystemView } from "../features/system/SystemView";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import heroUrl from "../assets/hero-dark-blossom.png";
 import "../styles/tokens.css";
@@ -57,9 +58,14 @@ export function AppShell() {
             <TrunkView scope={scope} />
           </div>
         )}
-        {view !== "desk" && view !== "lanes" && (
+        {view === "system" && (
+          <div className="view">
+            <SystemView {...health} />
+          </div>
+        )}
+        {view !== "desk" && view !== "lanes" && view !== "system" && (
           <div className="view placeholder">
-            <p>{view} — wired next; the Desk and Trunk map are live.</p>
+            <p>{view} — wired next; the Desk, Trunk map, and System are live.</p>
           </div>
         )}
         </ErrorBoundary>
