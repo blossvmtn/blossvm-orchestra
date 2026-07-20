@@ -72,11 +72,16 @@ export function SystemView({ health, error, loading }: HealthState) {
       <section style={{ display: "flex", flexDirection: "column", gap: 13 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <span style={eyebrow}>Instruments · local checks</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: degraded ? "#E0B968" : "#7FD6E3" }}>
-            {loading && !health
-              ? "probing…"
-              : `${checks.length - degraded} green · ${degraded} degraded`}
-          </span>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            {error && health ? (
+              <span style={{ fontFamily: MONO, fontSize: 11, color: "#E0B968" }} title={error}>stale — retrying</span>
+            ) : null}
+            <span style={{ fontFamily: MONO, fontSize: 11, color: degraded ? "#E0B968" : "#7FD6E3" }}>
+              {loading && !health
+                ? "probing…"
+                : `${checks.length - degraded} green · ${degraded} degraded`}
+            </span>
+          </div>
         </div>
 
         {error && !health ? (

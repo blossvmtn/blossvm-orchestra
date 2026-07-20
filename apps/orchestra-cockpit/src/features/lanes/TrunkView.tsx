@@ -134,9 +134,18 @@ export function TrunkView({ scope }: { scope: string | null }) {
                     {refs.map((ref) => (
                       <span
                         key={ref}
+                        role="button"
+                        tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
                           setFocusedBranch((cur) => (cur === ref ? null : ref));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setFocusedBranch((cur) => (cur === ref ? null : ref));
+                          }
                         }}
                         title="Focus this branch"
                         style={{

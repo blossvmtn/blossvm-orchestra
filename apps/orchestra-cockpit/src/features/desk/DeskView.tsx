@@ -86,6 +86,10 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
   const [forbidden, setForbidden] = useState<string[]>([]);
   const [allowedDraft, setAllowedDraft] = useState("");
   const [forbiddenDraft, setForbiddenDraft] = useState("");
+  // Stable across renders (Date.now() in the render body would flicker the
+  // preview and diverge from what actually gets dispatched); regenerated after
+  // each dispatch so two blank-branch lanes don't collide.
+  const [defaultSlug, setDefaultSlug] = useState(() => `lane-${Date.now()}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -95,7 +99,7 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
   const selected = lanes.find((l) => l.workIntent.id === selectedId) ?? null;
 
   const branchName = branch.trim() ? (branch.startsWith("orch/") ? branch.trim() : `orch/${branch.trim()}`) : "";
-  const laneSlug = (branchName || `orch/lane-${Date.now()}`).split("/").pop()!.replace(/[^\w.-]/g, "-");
+  const laneSlug = (branchName || `orch/${defaultSlug}`).split("/").pop()!.replace(/[^\w.-]/g, "-");
 
   function addPath(which: "allowed" | "forbidden") {
     const draft = which === "allowed" ? allowedDraft : forbiddenDraft;
@@ -124,7 +128,13 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
         {items.map((p) => (
           <span key={p} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 7px", borderRadius: 5, border: "1px solid #2A3340", fontFamily: MONO, fontSize: 11, color: "#C7CDD4" }}>
             {p}
-            <span onClick={() => removePath(which, p)} title="Remove" style={{ cursor: "pointer", color: "#667080" }}>✕</span>
+            <button
+              type="button"
+              onClick={() => removePath(which, p)}
+              title="Remove"
+              aria-label={`Remove ${p}`}
+              style={{ display: "inline-flex", alignItems: "center", background: "transparent", border: "none", padding: 0, font: "inherit", lineHeight: 1, cursor: "pointer", color: "#667080" }}
+            >✕</button>
           </span>
         ))}
         <input
@@ -161,7 +171,7 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
 
   const onDispatch = () => {
     if (!scope || intent.trim().length === 0) return;
-    const slug = laneSlug || `lane-${Date.now()}`;
+    const slug = laneSlug;
     void run("dispatch", async () => {
       await submitWorkIntent({
         repoSlug: scope,
@@ -180,6 +190,7 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
       setBranch("");
       setAllowed([]);
       setForbidden([]);
+      setDefaultSlug(`lane-${Date.now()}`);
     });
   };
 
