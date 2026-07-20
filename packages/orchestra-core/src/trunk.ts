@@ -14,6 +14,9 @@ export const TrunkCommitSchema = z.object({
   committedAt: z.string(),
   /** Parent SHAs (space-separated %P) — drives the lane graph layout. */
   parents: z.array(z.string()),
+  /** Local branch names decorating this commit (%D) — the branch tips, so the
+   *  graph can label which thread is which. Tags/remotes/HEAD are dropped. */
+  refs: z.array(z.string()),
 });
 export type TrunkCommit = z.infer<typeof TrunkCommitSchema>;
 

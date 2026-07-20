@@ -16,7 +16,21 @@ export class RepoNotFoundError extends Error {
 // subject or author name, so parsing a `git log` line never splits wrong.
 const RECORD_SEP = "\x1e";
 const UNIT_SEP = "\x1f";
-const LOG_FORMAT = ["%H", "%h", "%s", "%an", "%cI", "%P"].join(UNIT_SEP) + RECORD_SEP;
+const LOG_FORMAT = ["%H", "%h", "%s", "%an", "%cI", "%P", "%D"].join(UNIT_SEP) + RECORD_SEP;
+
+/** Parse `%D` ref decorations into local branch names (drop HEAD/tags/remotes). */
+function parseRefs(raw: string): string[] {
+  const out: string[] = [];
+  for (let token of raw.split(",")) {
+    token = token.trim();
+    if (!token || token === "HEAD") continue;
+    if (token.startsWith("tag:")) continue;
+    if (token.startsWith("HEAD -> ")) token = token.slice("HEAD -> ".length).trim();
+    if (token.startsWith("origin/") || token.startsWith("refs/")) continue;
+    if (!out.includes(token)) out.push(token);
+  }
+  return out;
+}
 // How many commits the flat `git log --all` returns for the graph.
 const MAX_GRAPH_COMMITS = 120;
 // Bounded so a long-lived branch can never make the scan slow or huge.
@@ -29,7 +43,7 @@ function parseLog(stdout: string): TrunkCommit[] {
     .map((record) => record.trim())
     .filter((record) => record.length > 0)
     .map((record) => {
-      const [sha, shortSha, subject, author, committedAt, parentsRaw] = record.split(UNIT_SEP);
+      const [sha, shortSha, subject, author, committedAt, parentsRaw, refsRaw] = record.split(UNIT_SEP);
       return {
         sha: sha ?? "",
         shortSha: shortSha ?? "",
@@ -37,6 +51,7 @@ function parseLog(stdout: string): TrunkCommit[] {
         author: author ?? "",
         committedAt: committedAt ?? "",
         parents: (parentsRaw ?? "").trim().split(/\s+/).filter((p) => p.length > 0),
+        refs: parseRefs(refsRaw ?? ""),
       };
     })
     .filter((commit) => commit.sha.length > 0);

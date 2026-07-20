@@ -41,12 +41,10 @@ export function TrunkView({ scope }: { scope: string | null }) {
 
   const rows = useMemo(() => layoutGraph(scan?.commits ?? []).rows, [scan]);
   const commitsBySha = useMemo(() => new Map((scan?.commits ?? []).map((c) => [c.sha, c])), [scan]);
-  const tipBadge = useMemo(() => {
-    const m = new Map<string, { name: string; status?: string; isBase: boolean }>();
-    for (const b of scan?.branches ?? []) {
-      const tip = b.commits[0]?.sha;
-      if (tip && !m.has(tip)) m.set(tip, { name: b.name, status: b.status, isBase: b.isBase });
-    }
+  // branch name -> live worktree status (if this branch is an active lane)
+  const branchStatus = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of scan?.branches ?? []) if (b.status) m.set(b.name, b.status);
     return m;
   }, [scan]);
 
@@ -73,7 +71,6 @@ export function TrunkView({ scope }: { scope: string | null }) {
           {scan && rows.length === 0 ? <div className="empty">No commits yet.</div> : null}
           {rows.map((row) => {
             const commit = commitsBySha.get(row.sha);
-            const badge = tipBadge.get(row.sha);
             const active = row.sha === selectedSha;
             return (
               <button
@@ -94,12 +91,16 @@ export function TrunkView({ scope }: { scope: string | null }) {
                     </span>
                   </span>
                 </div>
-                {badge ? (
-                  <span className="pill" style={{ color: row.nodeColor }}>
-                    <span className="dot" style={{ background: row.nodeColor }} />
-                    {badge.name}
-                    {badge.status ? ` · ${badge.status}` : ""}
-                  </span>
+                {commit && commit.refs.length > 0 ? (
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    {commit.refs.map((ref) => (
+                      <span key={ref} className="pill" style={{ color: row.nodeColor, background: "rgba(255,255,255,0.05)" }}>
+                        <span className="dot" style={{ background: row.nodeColor }} />
+                        {ref}
+                        {branchStatus.get(ref) ? ` · ${branchStatus.get(ref)}` : ""}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
               </button>
             );
@@ -112,9 +113,9 @@ export function TrunkView({ scope }: { scope: string | null }) {
           <>
             <div className="panel-head">
               <span className="field-label">Commit</span>
-              {tipBadge.get(selected.sha) ? (
+              {selected.refs.length > 0 ? (
                 <span className="mono dim" style={{ fontSize: 11 }}>
-                  {tipBadge.get(selected.sha)?.name}
+                  {selected.refs.join(" · ")}
                 </span>
               ) : null}
             </div>
