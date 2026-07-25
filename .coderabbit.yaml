@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit config for blossvm-orchestra.
+#
+# Why this file exists: the repo had no config, so it ran full defaults —
+# including a fresh review on every push to an open PR. CodeRabbit's rate limit
+# is shared org-wide (the Pro rolling reviews/hour window). construction-os
+# manages its consumption (auto_incremental_review: false), blossvmtn-okf is
+# request-only, and tenjo-os was tightened 2026-07-24. This repo was the last
+# unmanaged consumer: low PR volume, but a burst of WIP pushes here could still
+# starve a review construction-os needs.
+#
+# Posture: review on open, iterate freely, request the re-review when ready.
+
+language: "en-US"
+early_access: false
+
+tone_instructions: "Personal workflow tooling: a Bun/TypeScript daemon, CLI, and Tauri cockpit. PRIORITIZE: correctness bugs in the daemon pipeline and git-lane handling, shell/process-spawn safety, data loss in the SQLite store. DEPRIORITIZE: style nits."
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: false
+    # ignore_title_keywords was here until 2026-07-25 and is deliberately gone.
+    # A title is author-supplied and unverified, so "docs: …" on a PR full of code
+    # skipped review entirely — a bypass, not a filter. path_filters below achieve
+    # the same saving from the actual diff, which cannot be relabelled away.
+    # (CodeRabbit review, PR #634.)
+    base_branches:
+      - "main"
+
+  path_filters:
+    - "!bun.lock"
+    - "!**/*.map"
+    - "!**/target/**"
+    - "!docs/**"
+    - "!**/*.md"
+
+chat:
+  auto_reply: true
