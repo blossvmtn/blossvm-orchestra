@@ -27,10 +27,11 @@ reviews:
   auto_review:
     enabled: true
     auto_incremental_review: false
-    ignore_title_keywords:
-      - "docs:"
-      - "chore:"
-      - "WIP"
+    # ignore_title_keywords was here until 2026-07-25 and is deliberately gone.
+    # A title is author-supplied and unverified, so "docs: …" on a PR full of code
+    # skipped review entirely — a bypass, not a filter. path_filters below achieve
+    # the same saving from the actual diff, which cannot be relabelled away.
+    # (CodeRabbit review, PR #634.)
     base_branches:
       - "main"
 
