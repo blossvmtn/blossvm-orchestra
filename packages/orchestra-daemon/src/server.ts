@@ -12,6 +12,10 @@ import { runStackedAction, StackedActionError, WorktreeChainNotFoundError, type 
 import { buildStateSnapshot } from "./state/snapshot";
 import { checkSystemHealth } from "./system/health";
 import { scanTrunk, RepoNotFoundError } from "./state/trunk";
+import {
+  createUnavailableFileAtlasSnapshot,
+  type FileAtlasSnapshotProvider,
+} from "./workstation/fileAtlas";
 
 type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 
@@ -22,6 +26,7 @@ type DispatchWorkIntentTaskSpecInput = DispatchWorkIntentInput["taskSpec"];
 export type DaemonDeps = {
   token: string;
   db: OrchestraDb;
+  fileAtlasProvider: FileAtlasSnapshotProvider;
 };
 
 // The cockpit's webview calls this daemon cross-origin (dev: http://localhost:1420,
@@ -228,6 +233,19 @@ async function routeRequest(req: Request, deps: DaemonDeps): Promise<Response> {
   // timeouts). Never returns credentials or token contents (see health.ts).
   if (url.pathname === "/system/health" && req.method === "GET") {
     return Response.json(await checkSystemHealth(deps.db));
+  }
+
+  // R8B — one read-only, redacted workstation projection. The provider is
+  // total by contract; this fallback also keeps an unexpected adapter fault
+  // from failing the whole cockpit or leaking its raw error/path.
+  if (url.pathname === "/workstation/file-atlas" && req.method === "GET") {
+    try {
+      return Response.json(await deps.fileAtlasProvider.getSnapshot());
+    } catch {
+      // eslint-disable-next-line no-console
+      console.error("orchestra-daemon: File Atlas provider failed");
+      return Response.json(createUnavailableFileAtlasSnapshot());
+    }
   }
 
   // Phase 3A — read-only git-log trunk scan for one registered repo. Bounded

@@ -2,6 +2,7 @@ import { DAEMON_PORT } from "./paths";
 import { generateToken, writeToken } from "./token";
 import { createFetchHandler, type DaemonDeps } from "./server";
 import { createDb } from "./db/db";
+import { createLiveFileAtlasProvider } from "./workstation/liveFileAtlas";
 
 async function main() {
   // Security review, 2026-07-18: deps.token must never be empty once the
@@ -15,7 +16,12 @@ async function main() {
   // Bun.serve() throws here and we exit, instead of overwriting a live
   // daemon's token file with one it never reads (see F4 — the two compound).
   const token = generateToken();
-  const deps: DaemonDeps = { token, db: createDb() };
+  const db = createDb();
+  const deps: DaemonDeps = {
+    token,
+    db,
+    fileAtlasProvider: createLiveFileAtlasProvider(db),
+  };
   const fetch = createFetchHandler(deps);
   const server = Bun.serve({
     hostname: "127.0.0.1",

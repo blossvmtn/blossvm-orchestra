@@ -4,8 +4,9 @@ Local conductor desk for driving parallel AI coding agents (Claude Code today; C
 Cursor sequenced later — ADR 0001 D4) across one or more git projects, each in its own
 isolated worktree.
 
-Architecture: `docs/adr/0001-tauri-bun-architecture.md`. Current build: the Phase 0
-constitutional seed — `docs/specs/2026-07-18-phase-0-constitutional-seed.md`.
+Architecture: `docs/adr/0001-tauri-bun-architecture.md`. The current cockpit includes the
+Phase 3A operational view and the R8B read-only File Atlas projection; implementation
+contracts live under `docs/specs/`.
 
 A Bun workspace of four packages/apps:
 
@@ -54,6 +55,9 @@ directories. Schema/migration drift check: `bunx drizzle-kit check` from
 
 - Daemon token lives at `~/.orchestra/daemon.token`; SQLite db at
   `~/.orchestra/orchestra.db`.
+- File Atlas is a disposable, sanitized projection. It reads only approved workstation
+  evidence and explicitly registered repositories; it does not browse files, fetch Git
+  remotes, or become a second source of truth.
 - Product rules: `docs/ORCHESTRA-CONSTITUTION-v2.md` — superseded in part by ADR 0001; the
   ADR is authoritative where the two disagree.
 - T3 Code MIT attribution: `NOTICE`

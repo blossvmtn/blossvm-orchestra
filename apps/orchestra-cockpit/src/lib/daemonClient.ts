@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Receipt, StateSnapshot, TrunkScan, SystemHealth, HealthCheck, HealthStatus, RiskTier } from "@orchestra/core";
+import type {
+  FileAtlasSnapshot,
+  HealthCheck,
+  HealthStatus,
+  Receipt,
+  RiskTier,
+  StateSnapshot,
+  SystemHealth,
+  TrunkScan,
+} from "@orchestra/core";
 
 // Fixed port per docs/specs/2026-07-18-phase-0-constitutional-seed.md — mirrors
 // packages/orchestra-daemon/src/paths.ts. Duplicated rather than imported: the
@@ -169,6 +178,14 @@ export type { SystemHealth, HealthCheck, HealthStatus, RiskTier };
 export async function getSystemHealth(): Promise<SystemHealth> {
   const res = await daemonFetch("/system/health");
   return (await res.json()) as SystemHealth;
+}
+
+export type { FileAtlasSnapshot };
+
+/** R8B — sanitized, read-only workstation projection. */
+export async function getFileAtlasSnapshot(): Promise<FileAtlasSnapshot> {
+  const res = await daemonFetch("/workstation/file-atlas");
+  return (await res.json()) as FileAtlasSnapshot;
 }
 
 export type { TrunkScan };

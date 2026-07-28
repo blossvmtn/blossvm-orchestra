@@ -7,6 +7,7 @@ import { createDb } from "./db/db";
 import { repos, workIntents, taskSpecs, worktrees } from "./db/schema";
 import { git } from "./git/git";
 import { createFetchHandler, type DaemonDeps } from "./server";
+import { createFixtureFileAtlasProvider } from "./workstation/fileAtlas";
 
 /**
  * Binds a real Bun.serve() on an ephemeral port (0, not the fixed
@@ -19,7 +20,11 @@ import { createFetchHandler, type DaemonDeps } from "./server";
  * mile: the real webview, the real Rust-resolved token, literal pixels.
  */
 function startTestDaemon() {
-  const deps: DaemonDeps = { token: "test-token", db: createDb(":memory:") };
+  const deps: DaemonDeps = {
+    token: "test-token",
+    db: createDb(":memory:"),
+    fileAtlasProvider: createFixtureFileAtlasProvider("2026-07-28T16:30:00.000Z"),
+  };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: createFetchHandler(deps) });
   return { server, baseUrl: `http://127.0.0.1:${server.port}`, deps };
 }
@@ -81,6 +86,59 @@ describe("the IPC path (spec §3.6): real authenticated fetch() over a real loop
       headers,
     });
     expect(res.status).toBe(404);
+  });
+
+  test("serves the sanitized File Atlas snapshot only after authentication", async () => {
+    const deps: DaemonDeps = {
+      token: "test-token",
+      db: createDb(":memory:"),
+      fileAtlasProvider: createFixtureFileAtlasProvider("2026-07-28T16:30:00.000Z"),
+    };
+    const handler = createFetchHandler(deps);
+
+    const unauthorized = await handler(new Request("http://localhost/workstation/file-atlas"));
+    expect(unauthorized.status).toBe(401);
+
+    const response = await handler(new Request("http://localhost/workstation/file-atlas", {
+      headers: { authorization: "Bearer test-token" },
+    }));
+    expect(response.status).toBe(200);
+    const snapshot = (await response.json()) as {
+      schema: string;
+      generatedAt: string;
+      issues: unknown[];
+    };
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        schema: "workstation.file_atlas_snapshot.v1",
+        generatedAt: "2026-07-28T16:30:00.000Z",
+        issues: [],
+      }),
+    );
+  });
+
+  test("degrades an unexpected File Atlas provider failure to a redacted unknown snapshot", async () => {
+    const deps: DaemonDeps = {
+      token: "test-token",
+      db: createDb(":memory:"),
+      fileAtlasProvider: {
+        async getSnapshot() {
+          throw new Error("/private/path should never reach the caller");
+        },
+      },
+    };
+    const response = await createFetchHandler(deps)(new Request("http://localhost/workstation/file-atlas", {
+      headers: { authorization: "Bearer test-token" },
+    }));
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    expect(raw).not.toContain("/private/path");
+    expect(JSON.parse(raw)).toEqual(
+      expect.objectContaining({
+        schema: "workstation.file_atlas_snapshot.v1",
+        status: "unknown",
+      }),
+    );
   });
 
   test("an unauthenticated CORS preflight (OPTIONS) is answered directly, not gated behind the token", async () => {
@@ -150,7 +208,11 @@ describe("the IPC path (spec §3.6): real authenticated fetch() over a real loop
     // longer exists in practice — this test guards the second, independent
     // layer: routeRequest must reject an empty token outright, not just rely
     // on equality, so the bug class can't resurface from a future refactor.
-    const deps: DaemonDeps = { token: "", db: createDb(":memory:") };
+    const deps: DaemonDeps = {
+      token: "",
+      db: createDb(":memory:"),
+      fileAtlasProvider: createFixtureFileAtlasProvider(),
+    };
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: createFetchHandler(deps) });
     activeServer = server;
     const baseUrl = `http://127.0.0.1:${server.port}`;
