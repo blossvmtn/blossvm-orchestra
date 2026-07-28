@@ -16,10 +16,19 @@ import "../styles/shell.css";
 
 export type View = "desk" | "lanes" | "repositories" | "review" | "files" | "system";
 
+function FilesRoute() {
+  const fileAtlas = useFileAtlasSnapshot();
+
+  return (
+    <div className="view">
+      <FilesView {...fileAtlas} />
+    </div>
+  );
+}
+
 export function AppShell() {
   const snap = useOrchestraSnapshot();
   const health = useSystemHealth();
-  const fileAtlas = useFileAtlasSnapshot();
   const [view, setView] = useState<View>("desk");
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
 
@@ -67,9 +76,7 @@ export function AppShell() {
           </div>
         )}
         {view === "files" && (
-          <div className="view">
-            <FilesView {...fileAtlas} />
-          </div>
+          <FilesRoute />
         )}
         {view !== "desk" && view !== "lanes" && view !== "files" && view !== "system" && (
           <div className="view placeholder">

@@ -119,8 +119,13 @@ async function indexDigest(rootPath: string): Promise<string> {
   const gitPath = (await execGit(rootPath, ["rev-parse", "--git-path", "index"])).trim();
   if (!gitPath) throw new ObservationError("read_failed");
   const indexPath = path.isAbsolute(gitPath) ? gitPath : path.join(rootPath, gitPath);
-  const contents = await readFile(indexPath);
-  return createHash("sha256").update(contents).digest("hex");
+  try {
+    const contents = await readFile(indexPath);
+    return `sha256:${createHash("sha256").update(contents).digest("hex")}`;
+  } catch (error) {
+    if (reasonForError(error) === "not_found") return "missing-index";
+    throw error;
+  }
 }
 
 export async function inspectRegisteredRepository(
@@ -375,17 +380,20 @@ export function createLiveFileAtlasProvider(
           status: "healthy" as const,
         };
       })())
-        .catch((error) => ({
-          value:
-            reasonForError(error) === "not_found"
+        .catch((error) => {
+          const reasonCode = reasonForError(error);
+          const configurationMissing = reasonCode === "not_found";
+          return {
+            value: configurationMissing
               ? "configuration_missing" as const
               : "unknown" as const,
-          status: "unknown" as const,
-          issue: {
-            source: "workstation" as const,
-            reasonCode: reasonForError(error),
-          },
-        }));
+            status: configurationMissing ? "attention" as const : "unknown" as const,
+            issue: {
+              source: "workstation" as const,
+              reasonCode,
+            },
+          };
+        });
 
       const storagePromise = withTimeout(readAvailableBytes(homeDir))
         .then((availableBytes) => ({

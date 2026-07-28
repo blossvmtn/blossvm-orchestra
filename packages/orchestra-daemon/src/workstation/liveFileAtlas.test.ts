@@ -190,6 +190,25 @@ describe("live File Atlas provider", () => {
       reasonCode: "timeout",
     });
   });
+
+  test("marks a confirmed missing workstation bootstrap as attention", async () => {
+    const homeDir = await mkdtemp(path.join(tmpdir(), "orchestra-file-atlas-"));
+    const provider = createLiveFileAtlasProvider(createDb(":memory:"), {
+      homeDir,
+      readAvailableBytes: async () => 1,
+    });
+
+    const snapshot = await provider.getSnapshot();
+
+    expect(snapshot.workstation).toEqual({
+      bootstrap: "configuration_missing",
+      status: "attention",
+    });
+    expect(snapshot.issues).toContainEqual({
+      source: "workstation",
+      reasonCode: "not_found",
+    });
+  });
 });
 
 describe("registered repository inspection", () => {
@@ -210,5 +229,19 @@ describe("registered repository inspection", () => {
 
     expect(observation).toEqual({ dirty: true, ahead: false, detached: false });
     expect(Buffer.compare(Buffer.from(before), Buffer.from(after))).toBe(0);
+  });
+
+  test("classifies an index-less repository without creating its Git index", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "orchestra-file-atlas-git-"));
+    await runGit(root, ["init", "-b", "main"]);
+    await writeFile(path.join(root, "untracked.txt"), "fixture\n");
+
+    const indexPath = path.join(root, ".git", "index");
+    expect(await Bun.file(indexPath).exists()).toBe(false);
+
+    const observation = await inspectRegisteredRepository(root);
+
+    expect(observation).toEqual({ dirty: true, ahead: false, detached: false });
+    expect(await Bun.file(indexPath).exists()).toBe(false);
   });
 });
