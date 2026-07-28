@@ -1,18 +1,30 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useOrchestraSnapshot } from "../hooks/useOrchestraSnapshot";
 import { useSystemHealth } from "../hooks/useSystemHealth";
+import { useFileAtlasSnapshot } from "../hooks/useFileAtlasSnapshot";
 import { toLanes } from "../lib/snapshotViewModel";
 import { LeftRail } from "../components/LeftRail";
 import { SystemBar } from "../components/SystemBar";
 import { DeskView } from "../features/desk/DeskView";
 import { TrunkView } from "../features/lanes/TrunkView";
 import { SystemView } from "../features/system/SystemView";
+import { FilesView } from "../features/files/FilesView";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import heroUrl from "../assets/hero-dark-blossom.jpg";
 import "../styles/tokens.css";
 import "../styles/shell.css";
 
-export type View = "desk" | "lanes" | "repositories" | "review" | "system";
+export type View = "desk" | "lanes" | "repositories" | "review" | "files" | "system";
+
+function FilesRoute() {
+  const fileAtlas = useFileAtlasSnapshot();
+
+  return (
+    <div className="view">
+      <FilesView {...fileAtlas} />
+    </div>
+  );
+}
 
 export function AppShell() {
   const snap = useOrchestraSnapshot();
@@ -63,7 +75,10 @@ export function AppShell() {
             <SystemView {...health} />
           </div>
         )}
-        {view !== "desk" && view !== "lanes" && view !== "system" && (
+        {view === "files" && (
+          <FilesRoute />
+        )}
+        {view !== "desk" && view !== "lanes" && view !== "files" && view !== "system" && (
           <div className="view placeholder">
             <p>{view} — wired next; the Desk, Trunk map, and System are live.</p>
           </div>

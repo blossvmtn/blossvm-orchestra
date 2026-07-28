@@ -5,6 +5,7 @@ type Props = { view: View; snap: SnapshotState };
 
 const SUBTITLE: Partial<Record<View, string>> = {
   desk: "Compose a lane, watch it run, promote it.",
+  files: "Read-only truth from This Mac and Anywhere.",
   system: "Measured reality — only what's actually reachable.",
 };
 

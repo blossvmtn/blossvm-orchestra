@@ -52,3 +52,13 @@ export {
   type TrunkBranch,
   type TrunkCommit,
 } from "./trunk";
+export {
+  FileAtlasSnapshotSchema,
+  FileAtlasStatusSchema,
+  FileAtlasIssueReasonSchema,
+  FILE_ATLAS_THIS_MAC_CATEGORIES,
+  FILE_ATLAS_ANYWHERE_CATEGORIES,
+  type FileAtlasSnapshot,
+  type FileAtlasStatus,
+  type FileAtlasIssueReason,
+} from "./fileAtlas";
