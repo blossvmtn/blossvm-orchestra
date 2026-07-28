@@ -7,7 +7,7 @@ import {
   dispatchFixtureWorkIntent,
   runStackedAction,
 } from "../../lib/daemonClient";
-import { laneStatus, type Lane, type LaneStatus } from "../../lib/snapshotViewModel";
+import { laneId, laneStatus, type Lane, type LaneStatus } from "../../lib/snapshotViewModel";
 
 type Props = {
   snapshot: StateSnapshot | null;
@@ -92,11 +92,11 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
   const [defaultSlug, setDefaultSlug] = useState(() => `lane-${Date.now()}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedLaneId, setSelectedLaneId] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
 
   const hasRepo = scope !== null;
-  const selected = lanes.find((l) => l.workIntent.id === selectedId) ?? null;
+  const selected = lanes.find((lane) => laneId(lane) === selectedLaneId) ?? null;
 
   const branchName = branch.trim() ? (branch.startsWith("orch/") ? branch.trim() : `orch/${branch.trim()}`) : "";
   const laneSlug = (branchName || `orch/${defaultSlug}`).split("/").pop()!.replace(/[^\w.-]/g, "-");
@@ -325,11 +325,11 @@ export function DeskView({ snapshot, lanes, scope, refresh, loading, error }: Pr
               const color = STATUS_COLOR[status];
               return (
                 <button
-                  key={lane.workIntent.id}
+                  key={laneId(lane)}
                   className="lane"
                   style={laneVar(color)}
                   onClick={() => {
-                    setSelectedId(lane.workIntent.id);
+                    setSelectedLaneId(laneId(lane));
                     setCommitMessage(lane.receipt?.summary ?? "");
                   }}
                 >

@@ -34,25 +34,32 @@ export type LaneStatus =
   | "cancelled"
   | "pr_open";
 
+export function laneId(lane: Lane): string {
+  return lane.taskSpec?.id ?? lane.workIntent.id;
+}
+
 /**
  * Snapshot arrays arrive newest-first (daemon ordering), so for the 1:1 and
  * latest-of relations we keep the first row seen per key.
  */
 export function toLanes(snapshot: StateSnapshot): Lane[] {
-  const specByIntent = firstByKey(snapshot.taskSpecs, (t) => t.workIntentId);
+  const specsByIntent = groupByKey(snapshot.taskSpecs, (t) => t.workIntentId);
   const worktreeBySpec = firstByKey(snapshot.worktrees, (w) => w.taskSpecId);
   const runBySpec = firstByKey(snapshot.agentRuns, (r) => r.taskSpecId);
-  const receiptBySpec = firstByKey(snapshot.receipts, (r) => r.taskSpecId);
+  const receiptByRun = firstByKey(snapshot.receipts, (r) => r.agentRunId);
 
-  return snapshot.workIntents.map((workIntent) => {
-    const taskSpec = specByIntent.get(workIntent.id);
-    return {
-      workIntent,
-      taskSpec,
-      worktree: taskSpec ? worktreeBySpec.get(taskSpec.id) : undefined,
-      agentRun: taskSpec ? runBySpec.get(taskSpec.id) : undefined,
-      receipt: taskSpec ? receiptBySpec.get(taskSpec.id) : undefined,
-    };
+  return snapshot.workIntents.flatMap((workIntent) => {
+    const taskSpecs = specsByIntent.get(workIntent.id) ?? [undefined];
+    return taskSpecs.map((taskSpec) => {
+      const agentRun = taskSpec ? runBySpec.get(taskSpec.id) : undefined;
+      return {
+        workIntent,
+        taskSpec,
+        worktree: taskSpec ? worktreeBySpec.get(taskSpec.id) : undefined,
+        agentRun,
+        receipt: agentRun ? receiptByRun.get(agentRun.id) : undefined,
+      };
+    });
   });
 }
 
@@ -74,6 +81,17 @@ function firstByKey<T>(rows: T[], key: (row: T) => string): Map<string, T> {
   for (const row of rows) {
     const k = key(row);
     if (!map.has(k)) map.set(k, row);
+  }
+  return map;
+}
+
+function groupByKey<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const group = map.get(k);
+    if (group) group.push(row);
+    else map.set(k, [row]);
   }
   return map;
 }
