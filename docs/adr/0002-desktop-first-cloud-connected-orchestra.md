@@ -1,7 +1,8 @@
 # ADR 0002 — Desktop-first, cloud-connected Orchestra
 
-**Status:** Proposed  
+**Status:** Accepted
 **Date:** 2026-07-31  
+**Accepted:** 2026-08-04 by JD in GitHub issue #10
 **Scope:** Product surfaces, authority boundaries, and execution topology
 
 ## Context
