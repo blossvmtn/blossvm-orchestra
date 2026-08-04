@@ -49,7 +49,6 @@ export const TaskStatusSchema = z.enum([
 export const TaskSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
-  taskSpecId: z.string().uuid(),
   createdByActorId: z.string().uuid(),
   title: z.string().min(1).max(200),
   status: TaskStatusSchema,
@@ -90,6 +89,8 @@ export const RunTreeNodeSchema = z.object({
 
 export const RunTreeSchema = z
   .object({
+    id: z.string().uuid(),
+    organizationId: z.string().uuid(),
     taskId: z.string().uuid(),
     rootRunId: z.string().uuid(),
     nodes: z.array(RunTreeNodeSchema).min(1),
@@ -277,6 +278,7 @@ export const ProviderAuthModelSchema = z.enum([
 export const ProviderCapabilitySchema = z.object({
   provider: z.string().min(1),
   authModels: z.array(ProviderAuthModelSchema).min(1),
+  constraints: z.array(z.string().min(1)),
   launch: ProviderSupportSchema,
   exactBaseSha: ProviderSupportSchema,
   followUp: ProviderSupportSchema,

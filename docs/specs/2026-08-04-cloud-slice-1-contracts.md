@@ -43,7 +43,7 @@ It does not:
 | Organization | `OrganizationSchema` | Tenant boundary for every cloud-owned record. |
 | Actor | `ActorSchema` | Human, service, provider, and local-daemon identities remain distinguishable. |
 | Task | `TaskSchema` | Cloud-owned durable unit with a stable idempotency key. |
-| TaskSpec | `CloudTaskSpecSchema` | Provider-neutral instructions pinned to an exact GitHub SHA. |
+| TaskSpec | `CloudTaskSpecSchema` | Provider-neutral instructions pinned to an exact GitHub SHA and linked to its Task without a circular insert dependency. |
 | AgentRun | `CloudAgentRunSchema` | Provider execution normalized without granting provider authority over Orchestra. |
 | RunTree | `RunTreeSchema` | Child work remains bounded under one authorized root run. |
 | Decision | `DecisionSchema` | Explicit human or service decision record; conversation alone is not authority. |

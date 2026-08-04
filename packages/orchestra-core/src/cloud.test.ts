@@ -24,6 +24,8 @@ const IDS = {
   artifact: "d290f1ee-6c54-4b01-90e6-d701748f0810",
   grant: "d290f1ee-6c54-4b01-90e6-d701748f0811",
   machine: "d290f1ee-6c54-4b01-90e6-d701748f0812",
+  runTree: "d290f1ee-6c54-4b01-90e6-d701748f0813",
+  providerActor: "d290f1ee-6c54-4b01-90e6-d701748f0814",
 };
 
 const NOW = "2026-08-04T22:00:00.000Z";
@@ -42,7 +44,6 @@ describe("cloud task contracts", () => {
       TaskSchema.safeParse({
         id: IDS.task,
         organizationId: IDS.organization,
-        taskSpecId: IDS.taskSpec,
         createdByActorId: IDS.actor,
         title: "Create the first phone-originated cloud task",
         status: "draft",
@@ -136,6 +137,8 @@ describe("run trees and human authority", () => {
   test("accepts a bounded run tree", () => {
     expect(
       RunTreeSchema.safeParse({
+        id: IDS.runTree,
+        organizationId: IDS.organization,
         taskId: IDS.task,
         rootRunId: IDS.run,
         nodes: [
@@ -154,6 +157,8 @@ describe("run trees and human authority", () => {
   test("rejects a child whose parent is outside the bounded tree", () => {
     expect(
       RunTreeSchema.safeParse({
+        id: IDS.runTree,
+        organizationId: IDS.organization,
         taskId: IDS.task,
         rootRunId: IDS.run,
         nodes: [
@@ -172,6 +177,8 @@ describe("run trees and human authority", () => {
   test("rejects cycles disconnected from the authorized root", () => {
     expect(
       RunTreeSchema.safeParse({
+        id: IDS.runTree,
+        organizationId: IDS.organization,
         taskId: IDS.task,
         rootRunId: IDS.run,
         nodes: [
@@ -225,7 +232,7 @@ describe("grants, capabilities, and freshness", () => {
         taskId: IDS.task,
         artifactId: IDS.artifact,
         grantedByActorId: IDS.actor,
-        grantedToActorId: IDS.childRun,
+        grantedToActorId: IDS.providerActor,
         operations: ["read", "download"],
         storageKey: `${IDS.organization}/${IDS.task}/${IDS.artifact}`,
         sha256: "a".repeat(64),
@@ -242,6 +249,9 @@ describe("grants, capabilities, and freshness", () => {
       ProviderCapabilitySchema.safeParse({
         provider: "cursor-cloud",
         authModels: ["user_api_key", "service_account"],
+        constraints: [
+          "Service accounts require Cursor Enterprise; the first slice uses an owner-held user API key.",
+        ],
         launch: "beta",
         exactBaseSha: "beta",
         followUp: "beta",
