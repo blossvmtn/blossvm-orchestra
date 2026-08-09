@@ -465,6 +465,16 @@ describe("cloud run and receipt contracts", () => {
         evidence: [],
       }).success,
     ).toBe(false);
+    expect(
+      CloudReceiptSchema.safeParse({
+        ...receiptWithChecks,
+        evidence: receipt.evidence,
+        gitVerification: {
+          ...receiptWithChecks.gitVerification,
+          checks: "not_required",
+        },
+      }).success,
+    ).toBe(true);
   });
 
   test("requires failed cloud receipts to carry structured failure evidence", () => {
@@ -893,7 +903,12 @@ describe("run trees and human authority", () => {
       requestedByActorId: IDS.actor,
       kind: "promotion",
       status: "approved",
-      scope: `promote ${HEAD_SHA}`,
+      target: {
+        type: "promotion",
+        repository,
+        headSha: HEAD_SHA,
+        branch: "cursor/cloud-task-contracts-1234",
+      },
       requestedAt: NOW,
     };
 
@@ -902,9 +917,50 @@ describe("run trees and human authority", () => {
       ApprovalSchema.safeParse({
         ...approval,
         decidedByActorId: IDS.actor,
+        decidedByActorKind: "human",
+        decidedByOrganizationId: IDS.organization,
+        decisionMembershipId: IDS.membership,
         decidedAt: NOW,
       }).success,
     ).toBe(false);
+  });
+
+  test("distinguishes system expiry from accountable human revocation", () => {
+    const approval = {
+      id: IDS.grant,
+      organizationId: IDS.organization,
+      taskId: IDS.task,
+      requestedByActorId: IDS.actor,
+      kind: "dispatch",
+      target: { type: "dispatch", taskSpecId: IDS.taskSpec },
+      requestedAt: NOW,
+    };
+
+    expect(
+      ApprovalSchema.safeParse({
+        ...approval,
+        status: "expired",
+        expiresAt: "2026-08-04T23:00:00.000Z",
+      }).success,
+    ).toBe(true);
+    expect(
+      ApprovalSchema.safeParse({ ...approval, status: "expired" }).success,
+    ).toBe(false);
+    expect(
+      ApprovalSchema.safeParse({ ...approval, status: "revoked" }).success,
+    ).toBe(false);
+    expect(
+      ApprovalSchema.safeParse({
+        ...approval,
+        status: "revoked",
+        revokedByActorId: IDS.approver,
+        revokedByActorKind: "human",
+        revokedByOrganizationId: IDS.organization,
+        revocationMembershipId: IDS.membership,
+        revokedAt: "2026-08-04T22:30:00.000Z",
+        revocationReason: "Owner withdrew dispatch authority",
+      }).success,
+    ).toBe(true);
   });
 
   test("accepts a human promotion approval bound to exact Git evidence", () => {

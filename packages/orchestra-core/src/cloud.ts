@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { AgentRunSchema } from "./agentRun";
+import { GitShaSchema } from "./git";
 import { ReceiptSchema } from "./receipt";
 import { TaskSpecSchema } from "./taskSpec";
 
-export const GitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
+export { GitShaSchema, type GitSha } from "./git";
 export const IdempotencyKeySchema = z.string().min(8).max(200);
 export const RequestFingerprintSchema = z.string().regex(/^[0-9a-f]{64}$/);
 export const ReplayBindingSchema = z.object({
@@ -400,6 +401,12 @@ export const ApprovalSchema = z
     consumptionId: z.string().uuid().optional(),
     consumedByCommandId: z.string().uuid().optional(),
     consumedAt: z.string().datetime().optional(),
+    revokedByActorId: z.string().uuid().optional(),
+    revokedByActorKind: z.literal("human").optional(),
+    revokedByOrganizationId: z.string().uuid().optional(),
+    revocationMembershipId: z.string().uuid().optional(),
+    revokedAt: z.string().datetime().optional(),
+    revocationReason: z.string().min(1).optional(),
   })
   .superRefine((approval, context) => {
     if (approval.kind !== approval.target.type) {
@@ -421,7 +428,8 @@ export const ApprovalSchema = z
       });
     }
 
-    const isPending = approval.status === "pending";
+    const isDecided =
+      approval.status === "approved" || approval.status === "rejected";
     const decisionFields = [
       approval.decidedAt,
       approval.decidedByActorId,
@@ -429,19 +437,78 @@ export const ApprovalSchema = z
       approval.decidedByOrganizationId,
       approval.decisionMembershipId,
     ];
-    if (isPending && decisionFields.some(Boolean)) {
+    const hasDecision = decisionFields.some(Boolean);
+    const hasCompleteDecision = decisionFields.every(Boolean);
+    if (approval.status === "pending" && hasDecision) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "pending approvals cannot contain a decision",
         path: ["status"],
       });
     }
-    if (!isPending && decisionFields.some((field) => !field)) {
+    if (isDecided && !hasCompleteDecision) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message:
           "resolved approvals require a current human membership decision",
         path: ["status"],
+      });
+    }
+    if (approval.status === "expired") {
+      if (hasDecision) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "expired approvals cannot contain a human decision",
+          path: ["status"],
+        });
+      }
+      if (!approval.expiresAt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "expired approvals require their expiry instant",
+          path: ["expiresAt"],
+        });
+      }
+    }
+    if (approval.status === "revoked" && hasDecision && !hasCompleteDecision) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "revoked approvals must preserve a complete prior decision",
+        path: ["status"],
+      });
+    }
+
+    const revocationFields = [
+      approval.revokedByActorId,
+      approval.revokedByActorKind,
+      approval.revokedByOrganizationId,
+      approval.revocationMembershipId,
+      approval.revokedAt,
+      approval.revocationReason,
+    ];
+    const hasRevocation = revocationFields.some(Boolean);
+    if (approval.status === "revoked" && !revocationFields.every(Boolean)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "revoked approvals require an accountable human revocation",
+        path: ["status"],
+      });
+    }
+    if (approval.status !== "revoked" && hasRevocation) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "only revoked approvals can contain revocation evidence",
+        path: ["status"],
+      });
+    }
+    if (
+      approval.revokedByOrganizationId &&
+      approval.revokedByOrganizationId !== approval.organizationId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "approval revoker must belong to the same organization",
+        path: ["revokedByOrganizationId"],
       });
     }
     if (
@@ -461,6 +528,9 @@ export const ApprovalSchema = z
       : undefined;
     const expiresAt = approval.expiresAt
       ? Date.parse(approval.expiresAt)
+      : undefined;
+    const revokedAt = approval.revokedAt
+      ? Date.parse(approval.revokedAt)
       : undefined;
     if (decidedAt !== undefined && decidedAt < requestedAt) {
       context.addIssue({
@@ -485,6 +555,20 @@ export const ApprovalSchema = z
         code: z.ZodIssueCode.custom,
         message: "approval decision cannot follow its expiry",
         path: ["decidedAt"],
+      });
+    }
+    if (revokedAt !== undefined && revokedAt < requestedAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "approval revocation cannot precede its request",
+        path: ["revokedAt"],
+      });
+    }
+    if (decidedAt !== undefined && revokedAt !== undefined && revokedAt < decidedAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "approval revocation cannot precede its decision",
+        path: ["revokedAt"],
       });
     }
 
@@ -813,7 +897,10 @@ export const CloudReceiptSchema = z
       });
     }
 
-    if (!receipt.evidence.some((evidence) => evidence.kind === "check")) {
+    if (
+      receipt.gitVerification.checks === "passed" &&
+      !receipt.evidence.some((evidence) => evidence.kind === "check")
+    ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "successful cloud work requires check evidence",
@@ -936,7 +1023,7 @@ export const CloudExecutionChainSchema = z
     }
   });
 
-export type GitSha = z.infer<typeof GitShaSchema>;
+export type IdempotencyKey = z.infer<typeof IdempotencyKeySchema>;
 export type RequestFingerprint = z.infer<typeof RequestFingerprintSchema>;
 export type ReplayBinding = z.infer<typeof ReplayBindingSchema>;
 export type RepositoryRef = z.infer<typeof RepositoryRefSchema>;
@@ -950,12 +1037,24 @@ export type CloudAgentRun = z.infer<typeof CloudAgentRunSchema>;
 export type RunTreeLimits = z.infer<typeof RunTreeLimitsSchema>;
 export type RunTreeNode = z.infer<typeof RunTreeNodeSchema>;
 export type RunTree = z.infer<typeof RunTreeSchema>;
+export type RunTreeRelationship = z.infer<
+  typeof RunTreeRelationshipSchema
+>;
 export type RunTreeExecution = z.infer<typeof RunTreeExecutionSchema>;
+export type DecisionKind = z.infer<typeof DecisionKindSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;
+export type ApprovalKind = z.infer<typeof ApprovalKindSchema>;
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
 export type ApprovalTarget = z.infer<typeof ApprovalTargetSchema>;
 export type Approval = z.infer<typeof ApprovalSchema>;
+export type ArtifactOperation = z.infer<typeof ArtifactOperationSchema>;
 export type ArtifactGrant = z.infer<typeof ArtifactGrantSchema>;
+export type ProviderSupport = z.infer<typeof ProviderSupportSchema>;
+export type ProviderAuthModel = z.infer<typeof ProviderAuthModelSchema>;
 export type ProviderCapability = z.infer<typeof ProviderCapabilitySchema>;
+export type ProjectionFreshness = z.infer<
+  typeof ProjectionFreshnessSchema
+>;
 export type ProjectionConnectionStatus = z.infer<
   typeof ProjectionConnectionStatusSchema
 >;

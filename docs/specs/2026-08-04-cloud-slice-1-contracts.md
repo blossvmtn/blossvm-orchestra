@@ -66,13 +66,16 @@ Command while rejecting tenant, Task, entity-reference, replay, or repository-ba
 3. A provider status is evidence about provider execution, not an Orchestra approval.
 4. Questions and approvals suspend durable workflow execution. A current human membership
    from the same Organization, distinct from the requester, must decide the structured target.
+   Expiry is system-timed; revocation records a separate accountable human act and preserves any
+   prior decision evidence.
 5. Every follow-up, approval, or promotion command has its own idempotency key and canonical
    request fingerprint. Its receipt binds that command identity instead of reusing Task creation.
 6. Promotion consumes an approved record once, by an identified command, scoped to the
    repository base, head SHA, branch, and optional pull request.
 7. Receipt outcomes are discriminated. Success requires provider/run identity, returned Git
-   evidence, verified ancestry, and check evidence. Failure and cancellation require their own
-   evidence and cannot carry success-only fields.
+   evidence, verified ancestry, and check evidence when checks apply; `not_required` is explicit
+   verification, never a fabricated check row. Failure and cancellation require their own evidence
+   and cannot carry success-only fields.
 8. Local projections are read-only cloud visibility. Freshness is derived from connection
    state and the current read time; stale or offline never implies workstation mutation.
 9. Artifact access expires and is limited to named operations. Revocation records who,
@@ -111,6 +114,9 @@ The Cursor adapter must:
   user-editable metadata.
 - New tables are explicitly granted or withheld from the Data API instead of assuming
   automatic exposure.
+- Task and Command stores each enforce organization-scoped idempotency uniqueness and persist the
+  request fingerprint. Equal-key/equal-fingerprint replay returns the recorded result; equal-key/
+  different-fingerprint replay conflicts.
 - Migration and RLS verification happen locally before any remote application.
 
 ## 7. Exit criteria

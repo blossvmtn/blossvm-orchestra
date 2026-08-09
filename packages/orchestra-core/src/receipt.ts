@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GitShaSchema } from "./git";
 
 // One per completed AgentRun. PR-BRIEF genuinely becomes *part* of this, not
 // all of it — the fields below name what the rest is and where it comes from.
@@ -16,8 +17,8 @@ export const ReceiptSchema = z.object({
   summary: z.string().min(1),
   prUrl: z.string().url().optional(),
   prTitle: z.string().optional(),
-  commitSha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
-  baseSha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+  commitSha: GitShaSchema.optional(),
+  baseSha: GitShaSchema.optional(),
   branch: z.string().min(1).optional(),
   providerRunId: z.string().min(1).optional(),
   filesTouched: z.array(z.string()).optional(),

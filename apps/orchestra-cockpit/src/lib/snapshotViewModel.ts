@@ -62,6 +62,7 @@ export function laneStatus(lane: Lane): LaneStatus {
   if (run === "running") return "running";
   if (run === "blocked") return "blocked";
   if (run === "failed") return "failed";
+  if (run === "cancelled") return "cancelled";
   const outcome = lane.receipt?.outcome;
   if (outcome === "failed") return "failed";
   if (outcome === "cancelled") return "cancelled";
