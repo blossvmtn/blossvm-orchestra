@@ -82,6 +82,24 @@ export const CloudAgentRunSchema = AgentRunSchema.extend({
   requestedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   costUsd: z.number().finite().nonnegative().optional(),
+}).superRefine((run, context) => {
+  if (
+    [
+      "running",
+      "blocked",
+      "waiting_for_input",
+      "waiting_for_approval",
+      "cancelling",
+      "done",
+    ].includes(run.status) &&
+    !run.providerRunId
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "provider-dispatched cloud runs require a provider run identifier",
+      path: ["providerRunId"],
+    });
+  }
 });
 
 export const RunTreeRelationshipSchema = z.enum([

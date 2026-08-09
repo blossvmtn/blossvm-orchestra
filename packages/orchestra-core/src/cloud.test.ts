@@ -384,20 +384,17 @@ describe("cloud run and receipt contracts", () => {
   });
 
   test("normalizes a Cursor cloud run without giving the provider cloud authority", () => {
+    const run = cloudRun({ status: "waiting_for_input" });
+
+    expect(CloudAgentRunSchema.safeParse(run).success).toBe(true);
+    expect(
+      CloudAgentRunSchema.safeParse({ ...run, providerRunId: undefined }).success,
+    ).toBe(false);
     expect(
       CloudAgentRunSchema.safeParse({
-        id: IDS.run,
-        organizationId: IDS.organization,
-        taskSpecId: IDS.taskSpec,
-        taskId: IDS.task,
-        provider: "cursor-cloud",
-        providerRunId: "bc_abc123",
-        status: "waiting_for_input",
-        authority: "provider",
-        repository,
-        startedAt: NOW,
-        requestedAt: NOW,
-        updatedAt: NOW,
+        ...run,
+        status: "queued",
+        providerRunId: undefined,
       }).success,
     ).toBe(true);
   });
